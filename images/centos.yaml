@@ -1,0 +1,379 @@
+# Derived from lxc/lxc-ci images/centos.yaml at
+# 5826c344bfac81dbdef0d54f56ef90d907bd2591 and specialized for
+# CentOS Linux 7.9.2009 amd64 Incus VMs with Tencent Linux tkernel.
+image:
+  distribution: centos
+
+source:
+  downloader: centos-http
+  url: https://vault.centos.org/
+  variant: minimal
+  keys:
+  # RPM-GPG-KEY-CentOS-7, from the CentOS archive.
+  - |-
+    -----BEGIN PGP PUBLIC KEY BLOCK-----
+    Version: GnuPG v1.4.5 (GNU/Linux)
+
+    mQINBFOn/0sBEADLDyZ+DQHkcTHDQSE0a0B2iYAEXwpPvs67cJ4tmhe/iMOyVMh9
+    Yw/vBIF8scm6T/vPN5fopsKiW9UsAhGKg0epC6y5ed+NAUHTEa6pSOdo7CyFDwtn
+    4HF61Esyb4gzPT6QiSr0zvdTtgYBRZjAEPFVu3Dio0oZ5UQZ7fzdZfeixMQ8VMTQ
+    4y4x5vik9B+cqmGiq9AW71ixlDYVWasgR093fXiD9NLT4DTtK+KLGYNjJ8eMRqfZ
+    Ws7g7C+9aEGHfsGZ/SxLOumx/GfiTloal0dnq8TC7XQ/JuNdB9qjoXzRF+faDUsj
+    WuvNSQEqUXW1dzJjBvroEvgTdfCJfRpIgOrc256qvDMp1SxchMFltPlo5mbSMKu1
+    x1p4UkAzx543meMlRXOgx2/hnBm6H6L0FsSyDS6P224yF+30eeODD4Ju4BCyQ0jO
+    IpUxmUnApo/m0eRelI6TRl7jK6aGqSYUNhFBuFxSPKgKYBpFhVzRM63Jsvib82rY
+    438q3sIOUdxZY6pvMOWRkdUVoz7WBExTdx5NtGX4kdW5QtcQHM+2kht6sBnJsvcB
+    JYcYIwAUeA5vdRfwLKuZn6SgAUKdgeOtuf+cPR3/E68LZr784SlokiHLtQkfk98j
+    NXm6fJjXwJvwiM2IiFyg8aUwEEDX5U+QOCA0wYrgUQ/h8iathvBJKSc9jQARAQAB
+    tEJDZW50T1MtNyBLZXkgKENlbnRPUyA3IE9mZmljaWFsIFNpZ25pbmcgS2V5KSA8
+    c2VjdXJpdHlAY2VudG9zLm9yZz6JAjUEEwECAB8FAlOn/0sCGwMGCwkIBwMCBBUC
+    CAMDFgIBAh4BAheAAAoJECTGqKf0qA61TN0P/2730Th8cM+d1pEON7n0F1YiyxqG
+    QzwpC2Fhr2UIsXpi/lWTXIG6AlRvrajjFhw9HktYjlF4oMG032SnI0XPdmrN29lL
+    F+ee1ANdyvtkw4mMu2yQweVxU7Ku4oATPBvWRv+6pCQPTOMe5xPG0ZPjPGNiJ0xw
+    4Ns+f5Q6Gqm927oHXpylUQEmuHKsCp3dK/kZaxJOXsmq6syY1gbrLj2Anq0iWWP4
+    Tq8WMktUrTcc+zQ2pFR7ovEihK0Rvhmk6/N4+4JwAGijfhejxwNX8T6PCuYs5Jiv
+    hQvsI9FdIIlTP4XhFZ4N9ndnEwA4AH7tNBsmB3HEbLqUSmu2Rr8hGiT2Plc4Y9AO
+    aliW1kOMsZFYrX39krfRk2n2NXvieQJ/lw318gSGR67uckkz2ZekbCEpj/0mnHWD
+    3R6V7m95R6UYqjcw++Q5CtZ2tzmxomZTf42IGIKBbSVmIS75WY+cBULUx3PcZYHD
+    ZqAbB0Dl4MbdEH61kOI8EbN/TLl1i077r+9LXR1mOnlC3GLD03+XfY8eEBQf7137
+    YSMiW5r/5xwQk7xEcKlbZdmUJp3ZDTQBXT06vavvp3jlkqqH9QOE8ViZZ6aKQLqv
+    pL+4bs52jzuGwTMT7gOR5MzD+vT0fVS7Xm8MjOxvZgbHsAgzyFGlI1ggUQmU7lu3
+    uPNL0eRx4S1G4Jn5
+    =OGYX
+    -----END PGP PUBLIC KEY BLOCK-----
+
+targets:
+  lxc:
+    create_message: |-
+      You just created an {{ image.description }} container.
+    config:
+    - type: all
+      before: 5
+      content: |-
+        lxc.include = LXC_TEMPLATE_CONFIG/centos.common.conf
+    - type: user
+      before: 5
+      content: |-
+        lxc.include = LXC_TEMPLATE_CONFIG/centos.userns.conf
+    - type: all
+      after: 4
+      content: |-
+        lxc.include = LXC_TEMPLATE_CONFIG/common.conf
+    - type: user
+      after: 4
+      content: |-
+        lxc.include = LXC_TEMPLATE_CONFIG/userns.conf
+    - type: all
+      content: |-
+        lxc.arch = {{ image.architecture_kernel }}
+
+files:
+- path: /etc/hostname
+  generator: hostname
+
+- path: /etc/hosts
+  generator: hosts
+
+- path: /etc/machine-id
+  generator: dump
+  content: uninitialized
+
+- path: /etc/fstab
+  generator: dump
+
+- path: /var/lib/dbus/machine-id
+  generator: remove
+
+- path: /etc/sysconfig/network
+  generator: template
+  content: |-
+    NETWORKING=yes
+    HOSTNAME={{ container.name }}
+
+- path: /etc/sysconfig/network-scripts/ifcfg-enp5s0
+  generator: template
+  content: |-
+    DEVICE=enp5s0
+    BOOTPROTO=dhcp
+    ONBOOT=yes
+    HOSTNAME={{ container.name }}
+    TYPE=Ethernet
+    MTU=
+    DHCP_HOSTNAME={{ container.name }}
+  types:
+  - vm
+
+- path: /etc/default/grub
+  generator: dump
+  content: |-
+    GRUB_DEFAULT=saved
+    GRUB_RECORDFAIL_TIMEOUT=0
+    GRUB_TIMEOUT=0
+    GRUB_CMDLINE_LINUX_DEFAULT="${GRUB_CMDLINE_LINUX_DEFAULT} console=tty1 console=ttyS0"
+    GRUB_TERMINAL=console
+    GRUB_DISABLE_OS_PROBER=true
+  types:
+  - vm
+
+- path: /etc/dracut.conf.d/incus.conf
+  generator: dump
+  content: |-
+    add_drivers+=" virtio_scsi virtio_console "
+  types:
+  - vm
+
+- path: /etc/pki/rpm-gpg/RPM-GPG-KEY-Tlinux-2
+  generator: dump
+  content: |-
+    -----BEGIN PGP PUBLIC KEY BLOCK-----
+    Version: GnuPG v2.0.22 (GNU/Linux)
+
+    mQENBFonvE8BCACmzfGMtdByqUjfHnYZ9rXuJMUMSmB78wymv5CR9d3Bya+qegYv
+    oSzVGW9IaeU3h67fJRXzM3DrtH0qL9bXzQG0IRuXGpl2y1mvhn0OLhdXckaEOONG
+    YJ3EwHutQcm2p7lj4Rqilt5W+XThP4tm6Bbn6HbBFZFzIEA717pR+fUQhvWLZqXv
+    gcqzxpD8GaXfXn1FnW6bp4woLirA8Jwt463hOC9M/uKzPlJknebCaeZj190kmyGw
+    yQvETZPWGsNkICQGd7jRQQR9RBR71TLvgVPWDdj2nl67cpRMFq8ifoYTE0/8puyv
+    +mJ/8heYywLCvFrW3gTWCTUI6LEmQnDKKVI3ABEBAAG0J3RsaW51eCB0ZWFtIDxn
+    X0FQRF9TUkRDX09TQHRlbmNlbnQuY29tPokBOQQTAQIAIwUCWie8TwIbAwcLCQgH
+    AwIBBhUIAgkKCwQWAgMBAh4BAheAAAoJEPMO1i8drEHUSf4H/2faNrVaGzMJp6HU
+    s2fmwbTqUMiyEsrlyspfHVJJ2cQ2D7ZRabBalOVvlcnOwD3dk6aGJUw4KR7R7MPx
+    Yx8PrB46WIBgg3OaKdpEE2ZyIJ9qM9G/w9JyGrG4EO6/E23R6ZZuAgJ5rapU5TGd
+    /12FL5ZKIy0qPMJSTDWP5/LyxGRcD171oNSYHchZSZNq+G5MxaRJBEe62Se+P1yK
+    CuBWzxxXuQUZrt2UKNeaLjM07wjWoXYDO1i+2LaRU/AqEX5012NYuoPvi6jhG/ts
+    k7hDNHEHJTRjVXsQkFhyLIRxE/SoRXOFUAzdv+y3SpPPjzyO/DVz07LMVe3NlOmn
+    jsUbj3w=
+    =1FJU
+    -----END PGP PUBLIC KEY BLOCK-----
+
+- generator: fstab
+  types:
+  - vm
+
+- path: /etc/systemd/system/incus-agent-workaround.service
+  generator: dump
+  content: |-
+    [Unit]
+    Description=Incus - agent (CentOS 7 workaround)
+    Before=incus-agent.service
+
+    [Service]
+    Type=oneshot
+    ExecStart=-/bin/mkdir /run/incus_agent
+
+    [Install]
+    WantedBy=multi-user.target
+  types:
+  - vm
+
+- path: /etc/systemd/system/incus-agent.service.d/incus.conf
+  generator: dump
+  content: |-
+    [Service]
+    WorkingDirectory=/run/incus_agent
+  types:
+  - vm
+
+- generator: incus-agent
+  types:
+  - vm
+
+packages:
+  manager: yum
+  update: true
+  cleanup: true
+  sets:
+  - packages:
+    - cronie
+    - curl
+    - hostname
+    - initscripts
+    - iproute
+    - openssh-clients
+    - passwd
+    - policycoreutils
+    - rootfiles
+    - sudo
+    - rsyslog
+    - vim-minimal
+    action: install
+
+  - packages:
+    - dhclient
+    action: install
+
+  - packages:
+    - cronie-noanacron
+    action: install
+
+  - packages:
+    - NetworkManager
+    - shim
+    - irqbalance
+    - grub2-efi-x64
+    - grubby
+    action: install
+    types:
+    - vm
+
+  - packages:
+    - selinux-policy
+    - selinux-policy-targeted
+    action: remove
+
+actions:
+- trigger: post-unpack
+  action: |-
+    #!/bin/sh
+
+    __main() {
+      set -eux
+
+      touch /etc/hosts /etc/hostname
+
+      # CentOS 7 is archived. Keep build and runtime repositories explicit.
+      rm -f /etc/yum.repos.d/*.repo
+      cat > /etc/yum.repos.d/CentOS-Base.repo <<'EOF'
+    [base]
+    name=CentOS 7.9.2009 - Base
+    baseurl=https://vault.centos.org/7.9.2009/os/$basearch/
+    enabled=1
+    gpgcheck=1
+    gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
+
+    [updates]
+    name=CentOS 7.9.2009 - Updates
+    baseurl=https://vault.centos.org/7.9.2009/updates/$basearch/
+    enabled=1
+    gpgcheck=1
+    gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
+
+    [extras]
+    name=CentOS 7.9.2009 - Extras
+    baseurl=https://vault.centos.org/7.9.2009/extras/$basearch/
+    enabled=1
+    gpgcheck=1
+    gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
+    EOF
+    }
+
+    __main "$@"
+
+- trigger: post-packages
+  action: |-
+    #!/bin/sh
+
+    __main() {
+      set -eux
+
+      mkdir -p /selinux
+      echo 0 > /selinux/enforce
+      sed -i '/^session.*pam_loginuid.so/s/^session/# session/' /etc/pam.d/*
+    }
+
+    __main "$@"
+
+- trigger: post-files
+  action: |-
+    #!/bin/sh
+
+    __prepare_machine_id() {
+      : > /etc/machine-id
+      rm -f /var/lib/dbus/machine-id
+      systemd-machine-id-setup
+      test -s /etc/machine-id
+    }
+
+    __reset_machine_id() {
+      printf 'uninitialized\n' > /etc/machine-id
+      rm -f /var/lib/dbus/machine-id
+    }
+
+    __install_tlinux_kernel() {
+      _kernel_base_url=https://mirrors.cloud.tencent.com/tlinux/2.4/tlinux-tkernel4/x86_64/RPMS
+      _kernel_dir=/tmp/tlinux-kernel
+
+      mkdir -p "${_kernel_dir}"
+      for _package in \
+        kernel-5.4.119-19.0009.67.3.tl2.x86_64.rpm \
+        kernel-core-5.4.119-19.0009.67.3.tl2.x86_64.rpm \
+        kernel-modules-5.4.119-19.0009.67.3.tl2.x86_64.rpm; do
+        curl -fsSL --retry 3 --retry-delay 2 \
+          -o "${_kernel_dir}/${_package}" \
+          "${_kernel_base_url}/${_package}"
+      done
+
+      (
+        cd "${_kernel_dir}"
+        sha256sum --check <<'EOF'
+    5faa0b0ac3fd74ba3d8357cb3a9a0358c1f2282d2a87288c3faf4b6a43c18581  kernel-5.4.119-19.0009.67.3.tl2.x86_64.rpm
+    5b551268d8de1ae3c6dd0f956131b49ac6a5e968516af0b688095dd1545bc78d  kernel-core-5.4.119-19.0009.67.3.tl2.x86_64.rpm
+    18230ae693aa8e6e99e44ae0812fb8704d3cb4401cce0d4e27982841bf721c24  kernel-modules-5.4.119-19.0009.67.3.tl2.x86_64.rpm
+    EOF
+      )
+
+      rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-Tlinux-2
+      for _package in "${_kernel_dir}"/*.rpm; do
+        rpm --checksig "${_package}"
+      done
+
+      yum install --assumeyes \
+        "${_kernel_dir}/kernel-core-5.4.119-19.0009.67.3.tl2.x86_64.rpm" \
+        "${_kernel_dir}/kernel-modules-5.4.119-19.0009.67.3.tl2.x86_64.rpm" \
+        "${_kernel_dir}/kernel-5.4.119-19.0009.67.3.tl2.x86_64.rpm"
+
+      for _package in kernel kernel-core kernel-modules; do
+        rpm -q "${_package}-5.4.119-19.0009.67.3.tl2.x86_64"
+      done
+
+      yum clean all
+      rm -f "${_kernel_dir}"/*.rpm
+      rmdir "${_kernel_dir}"
+    }
+
+    __cleanup_firmware_mount() {
+      if mountpoint -q /sys/firmware; then
+        umount /sys/firmware
+      fi
+    }
+
+    __configure_boot() {
+      _kernel_version=5.4.119-19.0009.67.3
+
+      install -m 0600 \
+        "/lib/modules/${_kernel_version}/vmlinuz" \
+        "/boot/vmlinuz-${_kernel_version}"
+      depmod -a "${_kernel_version}"
+      dracut --kver "${_kernel_version}" --force
+
+      trap __cleanup_firmware_mount EXIT HUP INT TERM
+      mount -t tmpfs tmpfs /sys/firmware
+      mkdir -p /sys/firmware/efi
+
+      _grub_target="$(readlink -f /etc/grub2-efi.cfg)"
+      grub2-mkconfig -o "${_grub_target}"
+      sed -i "s#root=[^ ]*#root=${DISTROBUILDER_ROOT_UUID}#g" "${_grub_target}"
+      grubby --set-default "/boot/vmlinuz-${_kernel_version}"
+
+      _default_kernel="$(grubby --default-kernel)"
+      test "${_default_kernel}" = "/boot/vmlinuz-${_kernel_version}"
+
+      umount /sys/firmware
+      trap - EXIT HUP INT TERM
+    }
+
+    __main() {
+      set -eux
+
+      # Kernel RPM scriptlets require a valid ID; guests must generate their own.
+      __prepare_machine_id
+      __install_tlinux_kernel
+      __configure_boot
+      __reset_machine_id
+
+      systemctl enable NetworkManager.service
+      systemctl enable incus-agent-workaround.service
+      rm -Rf /var/lib/selinux/*
+      systemctl mask systemd-firstboot.service
+    }
+
+    __main "$@"
