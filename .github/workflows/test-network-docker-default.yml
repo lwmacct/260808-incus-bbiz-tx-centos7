@@ -1,10 +1,10 @@
-name: Test Incus VM on Docker default bridge
+name: Test VM network on Docker default bridge
 
 on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: GHCR image tag to test
+        description: Incus VM image tag in GHCR
         required: false
         default: centos-7-tkernel-5.4.119-19.0009.67.3-amd64-default-vm
 
@@ -22,7 +22,7 @@ env:
 
 jobs:
   docker-network:
-    name: docker0 bridge / DHCP sidecar / published VM
+    name: Published VM / Docker default bridge / dedicated DHCP
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
@@ -79,6 +79,7 @@ jobs:
               name=eth0 \
               hwaddr="${DOCKER_GUEST_MAC}"
             sudo incus init "${_test_image}" "${_test_instance}" \
+              --quiet \
               --vm \
               --profile "${_test_profile}" \
               -c security.secureboot=false \

@@ -1,15 +1,15 @@
-name: Test published CentOS 7 Tlinux Incus VM networking
+name: Test VM network on Incus managed bridge
 
 on:
   workflow_run:
     workflows:
-      - Build CentOS 7 Tlinux kernel Incus VM image
+      - Build Incus VM image
     types:
       - completed
   workflow_dispatch:
     inputs:
       image_tag:
-        description: GHCR image tag to test
+        description: Incus VM image tag in GHCR
         required: false
         default: centos-7-tkernel-5.4.119-19.0009.67.3-amd64-default-vm
 
@@ -27,7 +27,7 @@ env:
 
 jobs:
   network:
-    name: published image / Incus managed bridge / host reserves 4 GiB
+    name: Published VM / Incus managed bridge / host reserves 4 GiB
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -76,6 +76,7 @@ jobs:
                 and .[0].properties["requirements.secureboot"] == "false"
               '
             sudo incus init "${_test_image}" "${_test_instance}" \
+              --quiet \
               --vm \
               -c security.secureboot=false \
               -c limits.cpu="${VM_CPU_COUNT}" \

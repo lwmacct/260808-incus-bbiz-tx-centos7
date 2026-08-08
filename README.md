@@ -9,11 +9,11 @@
 - 产物：`incus.tar.xz`、`disk.qcow2`、`SHA256SUMS`
 
 镜像定义位于 [`images/centos.yaml`](images/centos.yaml)。构建、启动测试和
-GHCR 发布由 [Build CentOS 7 Tlinux kernel Incus VM image](.github/workflows/build-incus-image.yml)
+GHCR 发布由 [Build Incus VM image](.github/workflows/build-incus-vm.yml)
 workflow 完成。发布后的独立网络验证由
-[Test published CentOS 7 Tlinux Incus VM networking](.github/workflows/test-incus-vm-network.yml)
+[Test VM network on Incus managed bridge](.github/workflows/test-network-incus-managed.yml)
 workflow 完成；复用 Docker 默认 bridge 和 NAT 的对照实验由
-[Test Incus VM on Docker default bridge](.github/workflows/test-incus-vm-docker-network.yml)
+[Test VM network on Docker default bridge](.github/workflows/test-network-docker-default.yml)
 workflow 完成。
 
 ## 固定内核

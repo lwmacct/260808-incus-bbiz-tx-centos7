@@ -1,4 +1,4 @@
-name: Build CentOS 7 Tlinux kernel Incus VM image
+name: Build Incus VM image
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - images/centos.yaml
-      - .github/workflows/build-incus-image.yml
+      - .github/workflows/build-incus-vm.yml
   schedule:
     - cron: "17 3 * * 1"
   workflow_dispatch:
@@ -36,7 +36,7 @@ env:
 
 jobs:
   build:
-    name: centos 7.9.2009 / tkernel 5.4.119-19.0009.67.3 / amd64 / vm
+    name: CentOS 7.9.2009 / TKernel 5.4.119-19.0009.67.3 / AMD64 / VM
     runs-on: ubuntu-24.04
     timeout-minutes: 150
 
@@ -277,6 +277,7 @@ jobs:
               '
 
             sudo incus init "${_test_image}" "${_test_instance}" \
+              --quiet \
               --vm \
               -c security.secureboot=false \
               -c limits.cpu=2 \
