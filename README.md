@@ -8,7 +8,7 @@
 - 类型：仅 VM
 - 产物：`incus.tar.xz`、`disk.qcow2`、`SHA256SUMS`
 
-镜像定义位于 [`images/centos.yaml`](images/centos.yaml)。构建、启动测试和
+镜像定义位于 [`images/standard.yaml`](images/standard.yaml)。构建、启动测试和
 GHCR 发布由 [Build Incus VM image](.github/workflows/build-incus-vm.yml)
 workflow 完成。发布后的独立网络验证由
 [Test VM network on Incus managed bridge](.github/workflows/test-network-incus-managed.yml)
@@ -48,12 +48,13 @@ Docker 的默认规则。
 
 ## GHCR 标签
 
-CentOS 版本和内核版本由仓库配置固定，不再重复编码到 GHCR 标签中。每次成功
-构建发布一个可追溯标签，并更新 `latest`：
+CentOS 版本和内核版本由仓库配置固定，不再重复编码到 GHCR 标签中。tag 前缀取自
+镜像定义文件名，`standard` 对应 [`images/standard.yaml`](images/standard.yaml)。每次
+成功构建发布一个使用 12 位 Git 提交 ID 的可追溯标签，并更新 `standard-latest`：
 
 ```text
-latest
-build-<run_id>-<attempt>
+standard-latest
+standard-sha-<git-commit-id-12>
 ```
 
 发布地址：
@@ -68,7 +69,7 @@ ghcr.io/lwmacct/260808-incus-bbiz-tx-centos7
 mkdir -p out/centos7-tkernel-vm
 oras pull \
   --output out/centos7-tkernel-vm \
-  ghcr.io/lwmacct/260808-incus-bbiz-tx-centos7:latest
+  ghcr.io/lwmacct/260808-incus-bbiz-tx-centos7:standard-latest
 cd out/centos7-tkernel-vm
 sha256sum --check SHA256SUMS
 sudo incus image import \

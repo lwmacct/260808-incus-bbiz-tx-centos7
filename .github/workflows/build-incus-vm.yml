@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - images/centos.yaml
+      - images/standard.yaml
       - .github/workflows/build-incus-vm.yml
   schedule:
     - cron: "17 3 * * 1"
@@ -25,6 +25,7 @@ env:
   DISTROBUILDER_VERSION: 3.3.1
   DISTROBUILDER_CACHE_VERSION: 1
   ORAS_VERSION: 1.3.3
+  IMAGE_DEFINITION: images/standard.yaml
   ARCHITECTURE: amd64
   DISTROBUILDER_ARCHITECTURE: x86_64
   RELEASE: 7.9.2009
@@ -155,7 +156,7 @@ jobs:
           __main() {
             set -euo pipefail
 
-            sudo distrobuilder validate images/centos.yaml
+            sudo distrobuilder validate "${IMAGE_DEFINITION}"
           }
 
           __main "$@"
@@ -180,7 +181,7 @@ jobs:
           __main() {
             set -euo pipefail
 
-            sudo distrobuilder build-incus images/centos.yaml "${OUTPUT_DIR}/vm" \
+            sudo distrobuilder build-incus "${IMAGE_DEFINITION}" "${OUTPUT_DIR}/vm" \
               --type=split \
               --compression=xz \
               --vm \
@@ -360,8 +361,12 @@ jobs:
           __main() {
             set -euo pipefail
 
-            _build_tag="build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-            _latest_tag=latest
+            _image_file_name="${IMAGE_DEFINITION##*/}"
+            _image_name="${_image_file_name%.yaml}"
+            _full_sha=$(git rev-parse HEAD)
+            _short_sha="${_full_sha:0:12}"
+            _revision_tag="${_image_name}-sha-${_short_sha}"
+            _latest_tag="${_image_name}-latest"
             (
               cd "${OUTPUT_DIR}/vm"
               oras push \
@@ -370,17 +375,17 @@ jobs:
                 --annotation "org.opencontainers.image.revision=${GITHUB_SHA}" \
                 --annotation "org.opencontainers.image.version=${SERIAL}" \
                 --annotation "io.github.lwmacct.kernel.release=${KERNEL_RELEASE}" \
-                "${OCI_REPOSITORY}:${_build_tag}" \
+                "${OCI_REPOSITORY}:${_revision_tag}" \
                 "incus.tar.xz:${ORAS_METADATA_TYPE}" \
                 "disk.qcow2:${ORAS_DISK_TYPE}" \
                 "SHA256SUMS:${ORAS_CHECKSUM_TYPE}"
             )
-            oras tag "${OCI_REPOSITORY}:${_build_tag}" "${_latest_tag}"
+            oras tag "${OCI_REPOSITORY}:${_revision_tag}" "${_latest_tag}"
             {
               echo "## Published Incus VM image"
               echo
               echo "- \`${OCI_REPOSITORY}:${_latest_tag}\`"
-              echo "- \`${OCI_REPOSITORY}:${_build_tag}\`"
+              echo "- \`${OCI_REPOSITORY}:${_revision_tag}\`"
             } >> "${GITHUB_STEP_SUMMARY}"
           }
 

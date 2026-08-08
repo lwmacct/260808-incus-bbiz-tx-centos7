@@ -1,4 +1,4 @@
-# Derived from lxc/lxc-ci images/centos.yaml at
+# Derived from the lxc/lxc-ci CentOS image definition at
 # 5826c344bfac81dbdef0d54f56ef90d907bd2591 and specialized for
 # CentOS Linux 7.9.2009 amd64 Incus VMs with Tencent Linux tkernel.
 image:

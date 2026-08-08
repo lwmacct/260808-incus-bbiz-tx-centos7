@@ -8,7 +8,7 @@ workflow 构建、启动验证并发布 CentOS 7.9.2009 AMD64 Incus VM 镜像。
 
 | 方式 | 条件 |
 | --- | --- |
-| Push | 向 `main` 推送 `images/centos.yaml` 或 workflow 修改 |
+| Push | 向 `main` 推送 `images/standard.yaml` 或 workflow 修改 |
 | Schedule | 每周一 `03:17 UTC`，即北京时间每周一 `11:17` |
 | Manual | 在 Actions 页面运行 workflow，或使用 GitHub CLI |
 
@@ -30,7 +30,7 @@ CentOS Linux 7.9.2009 / tkernel 5.4.119-19.0009.67.3 / amd64 / default / VM
 
 1. 在 GitHub `ubuntu-24.04` AMD64 runner 上配置 Zabbly Incus stable，安装 Incus、QEMU、OVMF 和构建依赖。
 2. 编译并缓存固定版本的 `distrobuilder v3.3.1`。
-3. 验证 `images/centos.yaml`，从 CentOS Vault 下载并校验 Minimal ISO。
+3. 验证 `images/standard.yaml`，从 CentOS Vault 下载并校验 Minimal ISO。
 4. 使用 `distrobuilder build-incus --vm --type=split` 构建镜像；构建动作从腾讯镜像下载固定的 `kernel`、`kernel-core` 和 `kernel-modules` RPM。
 5. 校验三个 RPM 的固定 SHA-256，并使用内嵌 Tlinux 公钥验证 RSA/SHA256 签名。
 6. 安装内核，显式运行 `depmod`、`dracut` 和 grub 配置，并把该版本设为默认内核。
@@ -49,8 +49,8 @@ gh workflow run test-network-incus-managed.yml --ref main
 ```
 
 该 workflow 不重新构建镜像，而是从 GHCR 拉取发布产物并验证 `SHA256SUMS` 和
-qcow2 完整性，然后导入 Incus。默认测试 `latest`；复现特定构建时可传入
-`-f image_tag=build-<run-id>-<attempt>`。VM 使用 runner 的全部 `nproc` CPU，总内存则
+qcow2 完整性，然后导入 Incus。默认测试 `standard-latest`；复现特定构建时可传入
+`-f image_tag=standard-sha-<git-commit-id-12>`。VM 使用 runner 的全部 `nproc` CPU，总内存则
 按 `MemTotal - 4 GiB` 设置，给宿主和 Incus/QEMU 管理进程保留 `4 GiB`。
 
 网络实验依次验证：

@@ -11,7 +11,7 @@ on:
       image_tag:
         description: Incus VM image tag in GHCR
         required: false
-        default: latest
+        default: standard-latest
 
 permissions:
   contents: read
@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DEFAULT_IMAGE_TAG: latest
+  DEFAULT_IMAGE_TAG: standard-latest
   KERNEL_RELEASE: 5.4.119-19.0009.67.3
 
 jobs:
