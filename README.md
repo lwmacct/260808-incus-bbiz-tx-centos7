@@ -12,6 +12,8 @@
 GHCR 发布由 [Build CentOS 7 Tlinux kernel Incus VM image](.github/workflows/build-incus-image.yml)
 workflow 完成。发布后的独立网络验证由
 [Test published CentOS 7 Tlinux Incus VM networking](.github/workflows/test-incus-vm-network.yml)
+workflow 完成；复用 Docker 默认 bridge 和 NAT 的对照实验由
+[Test Incus VM on Docker default bridge](.github/workflows/test-incus-vm-docker-network.yml)
 workflow 完成。
 
 ## 固定内核
@@ -38,6 +40,10 @@ Incus agent 和网络。
 独立网络 workflow 会把 runner 的全部可用 CPU 分配给 VM，并把总内存减去
 `4 GiB` 后全部设置为 VM 内存上限。它验证 DHCP、默认路由、VM 与宿主的桥接
 连通性、DNS，以及 VM 到腾讯镜像和 CentOS Vault 的 IPv4 HTTPS。
+
+Docker bridge 对照 workflow 将 VM 网卡直接桥接到 `docker0`。由于 Docker
+默认网络不提供 DHCP，它在 `docker0` 上启动仅提供 DHCP 的 `dnsmasq`，并使用
+固定 MAC 发放单一租约；VM 的转发和 NAT 则完全使用 Docker 的默认规则。
 
 ## GHCR 标签
 

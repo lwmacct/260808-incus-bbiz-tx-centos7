@@ -63,6 +63,23 @@ qcow2 完整性，然后导入 Incus。VM 使用 runner 的全部 `nproc` CPU，
 5. VM 可以通过 DNS 解析腾讯镜像和 CentOS Vault。
 6. VM 可以通过 IPv4 HTTPS 下载两个仓库的 `repomd.xml`。
 
+### Docker 默认 bridge 对照实验
+
+[Test Incus VM on Docker default bridge](../.github/workflows/test-incus-vm-docker-network.yml)
+workflow 将 Incus VM 的 tap 设备直接桥接到 `docker0`，不添加额外的 iptables
+转发规则。Docker 默认 bridge 不提供 DHCP，因此该实验在 `docker0` 上启动一个
+仅提供 DHCP 的 `dnsmasq`，从 Docker IPAM 子网末端选择未占用地址并按固定 MAC
+发放单一租约。数据转发和 NAT 仍使用 Docker 默认规则。
+
+```bash
+gh workflow run test-incus-vm-docker-network.yml \
+  --ref main \
+  -f image_tag=centos-7-tkernel-5.4.119-19.0009.67.3-amd64-default-vm
+```
+
+该方案适合临时 CI runner。长期共享宿主需要为 Docker IPAM 与 DHCP 配置互不
+重叠的地址池，避免 Docker 后续分配与 DHCP lease 冲突。
+
 构建得到：
 
 ```text
