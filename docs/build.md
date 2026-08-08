@@ -4,6 +4,8 @@
 workflow 构建、启动验证并发布 CentOS 7.9.2009 AMD64 Incus VM 镜像。成品内核
 固定为 Tencent Linux `5.4.119-19.0009.67.3`。
 
+网络方案、DHCP 限制和故障排查经验见 [`docs/network.md`](network.md)。
+
 ## 触发方式
 
 | 方式 | 条件 |

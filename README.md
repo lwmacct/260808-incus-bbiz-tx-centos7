@@ -16,6 +16,8 @@ workflow 完成；复用 Docker 默认 bridge 和 NAT 的对照实验由
 [Test VM network on Docker default bridge](.github/workflows/test-network-docker-default.yml)
 workflow 完成。
 
+网络设计、DHCP 限制和故障排查经验见 [`docs/network.md`](docs/network.md)。
+
 ## 固定内核
 
 镜像不会启用 TencentOS 软件源，也不会安装会改变系统身份的 `tlinux-release`。
