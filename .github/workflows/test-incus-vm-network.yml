@@ -47,6 +47,7 @@ jobs:
               ca-certificates \
               curl \
               dnsmasq-base \
+              iptables \
               iputils-ping \
               jq \
               ovmf \
@@ -80,8 +81,28 @@ jobs:
             sudo systemctl enable --now incus.socket
             sudo incus admin waitready
             sudo incus admin init --minimal
+
+            _forward_chain=FORWARD
+            if sudo iptables --wait 5 --numeric --list DOCKER-USER \
+              >/dev/null 2>&1; then
+              _forward_chain=DOCKER-USER
+            fi
+            sudo iptables --wait 5 --check "${_forward_chain}" \
+              --in-interface incusbr0 --jump ACCEPT 2>/dev/null \
+              || sudo iptables --wait 5 --insert "${_forward_chain}" 1 \
+                --in-interface incusbr0 --jump ACCEPT
+            sudo iptables --wait 5 --check "${_forward_chain}" \
+              --out-interface incusbr0 \
+              --match conntrack --ctstate RELATED,ESTABLISHED \
+              --jump ACCEPT 2>/dev/null \
+              || sudo iptables --wait 5 --insert "${_forward_chain}" 1 \
+                --out-interface incusbr0 \
+                --match conntrack --ctstate RELATED,ESTABLISHED \
+                --jump ACCEPT
+
             sudo incus version
             sudo incus network show incusbr0
+            sudo iptables --numeric --verbose --list "${_forward_chain}"
           }
 
           __main "$@"
@@ -176,6 +197,10 @@ jobs:
               systemctl --no-pager --full status NetworkManager network || true
             sudo incus console "${_test_instance}" --show-log || true
             sudo incus network show incusbr0 || true
+            sudo sysctl net.ipv4.ip_forward || true
+            sudo iptables --numeric --verbose --list FORWARD || true
+            sudo iptables --numeric --verbose --list DOCKER-USER || true
+            sudo nft list ruleset || true
             ip -4 address show || true
             ip -4 route show || true
             sudo journalctl --no-pager --unit=incus -n 200 || true
