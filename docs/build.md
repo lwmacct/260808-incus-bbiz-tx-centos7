@@ -39,6 +39,30 @@ CentOS Linux 7.9.2009 / tkernel 5.4.119-19.0009.67.3 / amd64 / default / VM
 9. 验证系统身份、架构、RPM、`uname -r`、默认 grub 内核、virtio 模块、Incus agent 和 IPv4 网络。
 10. 生成 `SHA256SUMS`，通过 ORAS 发布到 GHCR。
 
+## 独立网络实验
+
+[Test published CentOS 7 Tlinux Incus VM networking](../.github/workflows/test-incus-vm-network.yml)
+workflow 在每次镜像构建 workflow 成功后自动运行，也可以手动指定 GHCR 标签：
+
+```bash
+gh workflow run test-incus-vm-network.yml \
+  --ref main \
+  -f image_tag=centos-7-tkernel-5.4.119-19.0009.67.3-amd64-default-vm
+```
+
+该 workflow 不重新构建镜像，而是从 GHCR 拉取发布产物并验证 `SHA256SUMS` 和
+qcow2 完整性，然后导入 Incus。VM 使用 runner 的全部 `nproc` CPU，总内存则
+按 `MemTotal - 4 GiB` 设置，给宿主和 Incus/QEMU 管理进程保留 `4 GiB`。
+
+网络实验依次验证：
+
+1. Incus agent 和固定内核可以正常启动。
+2. VM 中在线 CPU 数和内存容量符合动态资源分配。
+3. VM 通过 DHCP 获得全局 IPv4 地址和默认路由。
+4. VM 可以访问桥接网关，runner 宿主也可以访问 VM IPv4。
+5. VM 可以通过 DNS 解析腾讯镜像和 CentOS Vault。
+6. VM 可以通过 IPv4 HTTPS 下载两个仓库的 `repomd.xml`。
+
 构建得到：
 
 ```text

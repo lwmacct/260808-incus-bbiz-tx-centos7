@@ -10,6 +10,8 @@
 
 镜像定义位于 [`images/centos.yaml`](images/centos.yaml)。构建、启动测试和
 GHCR 发布由 [Build CentOS 7 Tlinux kernel Incus VM image](.github/workflows/build-incus-image.yml)
+workflow 完成。发布后的独立网络验证由
+[Test published CentOS 7 Tlinux Incus VM networking](.github/workflows/test-incus-vm-network.yml)
 workflow 完成。
 
 ## 固定内核
@@ -32,6 +34,10 @@ D799 A819 89B1 9BC3 210E 2759 F30E D62F 1DAC 41D4
 VM 启动后，workflow 会精确验证 `uname -r` 为
 `5.4.119-19.0009.67.3`，并检查三个 RPM、默认 grub 内核、virtio 模块、
 Incus agent 和网络。
+
+独立网络 workflow 会把 runner 的全部可用 CPU 分配给 VM，并把总内存减去
+`4 GiB` 后全部设置为 VM 内存上限。它验证 DHCP、默认路由、VM 与宿主的桥接
+连通性、DNS，以及 VM 到腾讯镜像和 CentOS Vault 的 IPv4 HTTPS。
 
 ## GHCR 标签
 

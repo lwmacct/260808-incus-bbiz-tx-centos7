@@ -1,0 +1,305 @@
+name: Test published CentOS 7 Tlinux Incus VM networking
+
+on:
+  workflow_run:
+    workflows:
+      - Build CentOS 7 Tlinux kernel Incus VM image
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: GHCR image tag to test
+        required: false
+        default: centos-7-tkernel-5.4.119-19.0009.67.3-amd64-default-vm
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: centos7-tkernel-incus-vm-network-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  OCI_REPOSITORY: ghcr.io/${{ github.repository }}
+  ORAS_VERSION: 1.3.3
+  DEFAULT_IMAGE_TAG: centos-7-tkernel-5.4.119-19.0009.67.3-amd64-default-vm
+  KERNEL_RELEASE: 5.4.119-19.0009.67.3
+
+jobs:
+  network:
+    name: published image / full runner CPU / host reserves 4 GiB
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Install Incus and QEMU
+        shell: bash
+        run: |
+          __main() {
+            set -euo pipefail
+
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends \
+              ca-certificates \
+              curl \
+              dnsmasq-base \
+              iputils-ping \
+              jq \
+              ovmf \
+              qemu-system-modules-spice \
+              qemu-system-x86 \
+              qemu-utils
+            sudo mkdir -p /etc/apt/keyrings
+            sudo curl -fsSL https://pkgs.zabbly.com/key.asc \
+              -o /etc/apt/keyrings/zabbly.asc
+            sudo tee /etc/apt/sources.list.d/zabbly-incus-stable.sources >/dev/null <<EOF
+          Enabled: yes
+          Types: deb
+          URIs: https://pkgs.zabbly.com/incus/stable
+          Suites: $(. /etc/os-release && echo "${VERSION_CODENAME}")
+          Components: main
+          Architectures: $(dpkg --print-architecture)
+          Signed-By: /etc/apt/keyrings/zabbly.asc
+          EOF
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends incus
+          }
+
+          __main "$@"
+
+      - name: Setup Incus
+        shell: bash
+        run: |
+          __main() {
+            set -euo pipefail
+
+            sudo systemctl enable --now incus.socket
+            sudo incus admin waitready
+            sudo incus admin init --minimal
+            sudo incus version
+            sudo incus network show incusbr0
+          }
+
+          __main "$@"
+
+      - name: Setup ORAS ${{ env.ORAS_VERSION }}
+        uses: oras-project/setup-oras@v2.0.1
+        with:
+          version: ${{ env.ORAS_VERSION }}
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4.2.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and verify published image
+        shell: bash
+        env:
+          INPUT_IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+        run: |
+          __main() {
+            set -euo pipefail
+
+            _image_tag="${INPUT_IMAGE_TAG:-${DEFAULT_IMAGE_TAG}}"
+            _image_dir="${RUNNER_TEMP}/published-incus-image"
+            mkdir "${_image_dir}"
+            oras pull --output "${_image_dir}" \
+              "${OCI_REPOSITORY}:${_image_tag}"
+            (
+              cd "${_image_dir}"
+              sha256sum --check SHA256SUMS
+              qemu-img check disk.qcow2
+            )
+            {
+              echo "IMAGE_TAG=${_image_tag}"
+              echo "IMAGE_DIR=${_image_dir}"
+            } >> "${GITHUB_ENV}"
+          }
+
+          __main "$@"
+
+      - name: Allocate runner resources
+        shell: bash
+        run: |
+          __main() {
+            set -euo pipefail
+
+            _host_cpu_count=$(nproc)
+            _host_memory_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+            _reserved_memory_kib=$((4 * 1024 * 1024))
+            _vm_memory_mib=$(((_host_memory_kib - _reserved_memory_kib) / 1024))
+
+            if [ "${_host_cpu_count}" -lt 1 ] || [ "${_vm_memory_mib}" -lt 1024 ]; then
+              echo "Runner has insufficient resources after reserving 4 GiB" >&2
+              return 1
+            fi
+
+            {
+              echo "VM_CPU_COUNT=${_host_cpu_count}"
+              echo "VM_MEMORY_MIB=${_vm_memory_mib}"
+              echo "VM_MEMORY_LIMIT=${_vm_memory_mib}MiB"
+            } >> "${GITHUB_ENV}"
+            {
+              echo "## Runner allocation"
+              echo
+              printf -- '- Runner CPUs: %s\n' "${_host_cpu_count}"
+              printf -- '- Runner memory: %s MiB\n' "$((_host_memory_kib / 1024))"
+              printf -- '- Host memory reserve: 4096 MiB\n'
+              printf -- '- VM CPUs: %s\n' "${_host_cpu_count}"
+              printf -- '- VM memory limit: %s MiB\n' "${_vm_memory_mib}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          }
+
+          __main "$@"
+
+      - name: Start VM and test networking
+        shell: bash
+        run: |
+          __cleanup() {
+            sudo incus delete --force "${_test_instance}" 2>/dev/null || true
+            sudo incus image delete "${_test_image}" 2>/dev/null || true
+          }
+
+          __diagnose() {
+            sudo incus list "${_test_instance}" --format=yaml || true
+            sudo incus info "${_test_instance}" --show-log || true
+            sudo incus console "${_test_instance}" --show-log || true
+            sudo incus network show incusbr0 || true
+            ip -4 address show || true
+            ip -4 route show || true
+            sudo journalctl --no-pager --unit=incus -n 200 || true
+          }
+
+          __fail() {
+            __diagnose
+            exit 1
+          }
+
+          __main() {
+            set -euo pipefail
+
+            _test_image="network-centos7-tkernel-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            _test_instance="${_test_image}-instance"
+            trap __cleanup EXIT HUP INT TERM
+
+            sudo incus image import \
+              "${IMAGE_DIR}/incus.tar.xz" \
+              "${IMAGE_DIR}/disk.qcow2" \
+              --alias "${_test_image}"
+            sudo incus image list "${_test_image}" --format=json \
+              | jq -e '
+                length == 1
+                and .[0].type == "virtual-machine"
+                and .[0].properties["requirements.cdrom_agent"] == "true"
+                and .[0].properties["requirements.secureboot"] == "false"
+              '
+
+            sudo incus init "${_test_image}" "${_test_instance}" \
+              --vm \
+              -c security.secureboot=false \
+              -c limits.cpu="${VM_CPU_COUNT}" \
+              -c limits.memory="${VM_MEMORY_LIMIT}"
+            sudo incus config device add "${_test_instance}" agent disk \
+              source=agent:config
+            sudo incus start "${_test_instance}"
+
+            _ready=false
+            set +e
+            for _attempt in $(seq 1 120); do
+              sudo incus exec "${_test_instance}" -- true >/dev/null 2>&1
+              _agent_status=$?
+              if [ "${_agent_status}" -eq 0 ]; then
+                _ready=true
+                break
+              fi
+              sleep 5
+            done
+            set -e
+            test "${_ready}" = true || __fail
+
+            if ! _guest_kernel=$(sudo incus exec "${_test_instance}" -- uname -r); then
+              __fail
+            fi
+            test "${_guest_kernel}" = "${KERNEL_RELEASE}" || __fail
+
+            if ! _guest_cpu_count=$(sudo incus exec "${_test_instance}" -- getconf _NPROCESSORS_ONLN); then
+              __fail
+            fi
+            test "${_guest_cpu_count}" = "${VM_CPU_COUNT}" || __fail
+
+            if ! _guest_memory_kib=$(sudo incus exec "${_test_instance}" -- \
+              awk '/^MemTotal:/ {print $2}' /proc/meminfo); then
+              __fail
+            fi
+            _minimum_guest_memory_kib=$(((VM_MEMORY_MIB - 256) * 1024))
+            test "${_guest_memory_kib}" -ge "${_minimum_guest_memory_kib}" || __fail
+
+            sudo incus exec "${_test_instance}" -- ip -4 address show || __fail
+            sudo incus exec "${_test_instance}" -- ip -4 route show || __fail
+            sudo incus exec "${_test_instance}" -- cat /etc/resolv.conf || __fail
+
+            if ! _guest_ipv4_cidr=$(sudo incus exec "${_test_instance}" -- \
+              ip -4 -o address show scope global | awk 'NR == 1 {print $4}'); then
+              __fail
+            fi
+            test -n "${_guest_ipv4_cidr}" || __fail
+            _guest_ipv4=${_guest_ipv4_cidr%/*}
+
+            if ! _guest_gateway=$(sudo incus exec "${_test_instance}" -- \
+              ip -4 route show default | awk 'NR == 1 {print $3}'); then
+              __fail
+            fi
+            test -n "${_guest_gateway}" || __fail
+
+            sudo incus exec "${_test_instance}" -- \
+              ping -c 3 -W 3 "${_guest_gateway}" || __fail
+            ping -c 3 -W 3 "${_guest_ipv4}" || __fail
+
+            if ! _dns_tencent=$(sudo incus exec "${_test_instance}" -- \
+              getent ahostsv4 mirrors.cloud.tencent.com); then
+              __fail
+            fi
+            test -n "${_dns_tencent}" || __fail
+
+            if ! _dns_centos=$(sudo incus exec "${_test_instance}" -- \
+              getent ahostsv4 vault.centos.org); then
+              __fail
+            fi
+            test -n "${_dns_centos}" || __fail
+
+            for _url in \
+              https://mirrors.cloud.tencent.com/tlinux/2.4/tlinux-tkernel4/x86_64/repodata/repomd.xml \
+              https://vault.centos.org/7.9.2009/os/x86_64/repodata/repomd.xml; do
+              sudo incus exec "${_test_instance}" -- \
+                curl -4 -fsSL \
+                  --retry 3 \
+                  --connect-timeout 10 \
+                  --max-time 60 \
+                  --output /dev/null \
+                  --write-out 'status=%{http_code} remote_ip=%{remote_ip} connect=%{time_connect}s total=%{time_total}s\n' \
+                  "${_url}" || __fail
+            done
+
+            {
+              echo
+              echo "## Guest network result"
+              echo
+              printf -- '- Image tag: %s\n' "${IMAGE_TAG}"
+              printf -- '- Kernel: %s\n' "${_guest_kernel}"
+              printf -- '- Guest CPUs online: %s\n' "${_guest_cpu_count}"
+              printf -- '- Guest memory: %s MiB\n' "$((_guest_memory_kib / 1024))"
+              printf -- '- Guest IPv4: %s\n' "${_guest_ipv4_cidr}"
+              printf -- '- Default gateway: %s\n' "${_guest_gateway}"
+              echo 'DHCP, default route, bidirectional bridge ICMP, DNS and IPv4 HTTPS: passed'
+            } >> "${GITHUB_STEP_SUMMARY}"
+
+            sudo incus stop --force "${_test_instance}"
+          }
+
+          __main "$@"
