@@ -192,6 +192,31 @@ jobs:
             printf '\n==> %s\n' "$1"
           }
 
+          __probe_runner_https() {
+            _url=$1
+            printf 'origin=runner url=%s\n' "${_url}"
+            curl -4 -fsSL \
+              --retry 2 \
+              --connect-timeout 10 \
+              --max-time 60 \
+              --output /dev/null \
+              --write-out 'status=%{http_code} remote_ip=%{remote_ip} connect=%{time_connect}s total=%{time_total}s\n' \
+              "${_url}"
+          }
+
+          __probe_guest_https() {
+            _url=$1
+            printf 'origin=guest url=%s\n' "${_url}"
+            sudo incus exec "${_test_instance}" -- \
+              curl -4 -fsSL \
+                --retry 2 \
+                --connect-timeout 10 \
+                --max-time 60 \
+                --output /dev/null \
+                --write-out 'status=%{http_code} remote_ip=%{remote_ip} connect=%{time_connect}s total=%{time_total}s\n' \
+                "${_url}"
+          }
+
           __main() {
             set -euo pipefail
 
@@ -322,19 +347,38 @@ jobs:
               "vault.centos.org returned no IPv4 addresses"
             printf '%s\n%s\n' "${_dns_tencent}" "${_dns_centos}"
 
-            __stage "Verify guest IPv4 HTTPS repository access"
-            for _url in \
-              https://mirrors.cloud.tencent.com/tlinux/2.4/tlinux-tkernel4/x86_64/repodata/repomd.xml \
-              https://vault.centos.org/7.9.2009/os/x86_64/repodata/repomd.xml; do
-              sudo incus exec "${_test_instance}" -- \
-                curl -4 -fsSL \
-                  --retry 3 \
-                  --connect-timeout 10 \
-                  --max-time 60 \
-                  --output /dev/null \
-                  --write-out 'status=%{http_code} remote_ip=%{remote_ip} connect=%{time_connect}s total=%{time_total}s\n' \
-                  "${_url}" || __fail "Guest HTTPS request failed: ${_url}"
-            done
+            __stage "Compare runner and guest IPv4 HTTPS access"
+            _tencent_url=https://mirrors.cloud.tencent.com/tlinux/2.4/tlinux-tkernel4/x86_64/repodata/repomd.xml
+            _vault_url=https://vault.centos.org/7.9.2009/os/x86_64/repodata/repomd.xml
+            _tencent_runner_ok=false
+            _tencent_guest_ok=false
+            _vault_runner_ok=false
+            _vault_guest_ok=false
+
+            if __probe_runner_https "${_tencent_url}"; then
+              _tencent_runner_ok=true
+            fi
+            if __probe_guest_https "${_tencent_url}"; then
+              _tencent_guest_ok=true
+            fi
+            if __probe_runner_https "${_vault_url}"; then
+              _vault_runner_ok=true
+            fi
+            if __probe_guest_https "${_vault_url}"; then
+              _vault_guest_ok=true
+            fi
+
+            test "${_vault_guest_ok}" = true || __fail \
+              "Guest cannot reach the CentOS Vault HTTPS control endpoint"
+
+            _tencent_result=passed
+            if [ "${_tencent_guest_ok}" != true ]; then
+              if [ "${_tencent_runner_ok}" = true ]; then
+                __fail "Tencent HTTPS works on the runner but not in the guest"
+              fi
+              _tencent_result="unreachable from both runner and guest"
+              echo "::warning title=Tencent mirror external reachability::The Tencent mirror is unreachable from both the runner and guest; Incus NAT is not the differentiator"
+            fi
 
             {
               echo
@@ -346,7 +390,12 @@ jobs:
               printf -- '- Guest memory: %s MiB\n' "$((_guest_memory_kib / 1024))"
               printf -- '- Guest IPv4: %s\n' "${_guest_ipv4_cidr}"
               printf -- '- Default gateway: %s\n' "${_guest_gateway}"
-              echo 'DHCP, default route, bidirectional bridge ICMP, DNS and IPv4 HTTPS: passed'
+              printf -- '- Tencent HTTPS (runner): %s\n' "${_tencent_runner_ok}"
+              printf -- '- Tencent HTTPS (guest): %s (%s)\n' \
+                "${_tencent_guest_ok}" "${_tencent_result}"
+              printf -- '- CentOS Vault HTTPS (runner): %s\n' "${_vault_runner_ok}"
+              printf -- '- CentOS Vault HTTPS (guest): %s\n' "${_vault_guest_ok}"
+              echo 'DHCP, default route, bidirectional bridge ICMP, DNS and control IPv4 HTTPS: passed'
             } >> "${GITHUB_STEP_SUMMARY}"
 
             sudo incus stop --force "${_test_instance}"
