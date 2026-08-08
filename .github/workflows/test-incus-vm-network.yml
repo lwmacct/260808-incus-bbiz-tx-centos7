@@ -169,6 +169,11 @@ jobs:
           __diagnose() {
             sudo incus list "${_test_instance}" --format=yaml || true
             sudo incus info "${_test_instance}" --show-log || true
+            sudo incus exec "${_test_instance}" -- ip -4 address show || true
+            sudo incus exec "${_test_instance}" -- ip -4 route show || true
+            sudo incus exec "${_test_instance}" -- cat /etc/resolv.conf || true
+            sudo incus exec "${_test_instance}" -- \
+              systemctl --no-pager --full status NetworkManager network || true
             sudo incus console "${_test_instance}" --show-log || true
             sudo incus network show incusbr0 || true
             ip -4 address show || true
@@ -177,8 +182,14 @@ jobs:
           }
 
           __fail() {
+            _failure_stage=$1
+            echo "::error title=VM network experiment failed::${_failure_stage}" >&2
             __diagnose
             exit 1
+          }
+
+          __stage() {
+            printf '\n==> %s\n' "$1"
           }
 
           __main() {
@@ -221,58 +232,97 @@ jobs:
               sleep 5
             done
             set -e
-            test "${_ready}" = true || __fail
+            test "${_ready}" = true || __fail \
+              "Incus agent did not become ready within 10 minutes"
 
+            __stage "Verify kernel and allocated resources"
             if ! _guest_kernel=$(sudo incus exec "${_test_instance}" -- uname -r); then
-              __fail
+              __fail "Could not read the guest kernel release"
             fi
-            test "${_guest_kernel}" = "${KERNEL_RELEASE}" || __fail
+            test "${_guest_kernel}" = "${KERNEL_RELEASE}" || __fail \
+              "Guest kernel ${_guest_kernel} does not match ${KERNEL_RELEASE}"
 
             if ! _guest_cpu_count=$(sudo incus exec "${_test_instance}" -- getconf _NPROCESSORS_ONLN); then
-              __fail
+              __fail "Could not read the guest online CPU count"
             fi
-            test "${_guest_cpu_count}" = "${VM_CPU_COUNT}" || __fail
+            test "${_guest_cpu_count}" = "${VM_CPU_COUNT}" || __fail \
+              "Guest has ${_guest_cpu_count} online CPUs; expected ${VM_CPU_COUNT}"
+
+            if ! _configured_memory=$(sudo incus config get \
+              "${_test_instance}" limits.memory); then
+              __fail "Could not read the VM memory limit"
+            fi
+            test "${_configured_memory}" = "${VM_MEMORY_LIMIT}" || __fail \
+              "VM memory limit ${_configured_memory} does not match ${VM_MEMORY_LIMIT}"
 
             if ! _guest_memory_kib=$(sudo incus exec "${_test_instance}" -- \
               awk '/^MemTotal:/ {print $2}' /proc/meminfo); then
-              __fail
+              __fail "Could not read guest MemTotal"
             fi
-            _minimum_guest_memory_kib=$(((VM_MEMORY_MIB - 256) * 1024))
-            test "${_guest_memory_kib}" -ge "${_minimum_guest_memory_kib}" || __fail
-
-            sudo incus exec "${_test_instance}" -- ip -4 address show || __fail
-            sudo incus exec "${_test_instance}" -- ip -4 route show || __fail
-            sudo incus exec "${_test_instance}" -- cat /etc/resolv.conf || __fail
-
-            if ! _guest_ipv4_cidr=$(sudo incus exec "${_test_instance}" -- \
-              ip -4 -o address show scope global | awk 'NR == 1 {print $4}'); then
-              __fail
+            _minimum_guest_memory_kib=$((VM_MEMORY_MIB * 90 * 1024 / 100))
+            _maximum_guest_memory_kib=$((VM_MEMORY_MIB * 1024))
+            if [ "${_guest_memory_kib}" -lt "${_minimum_guest_memory_kib}" ] || \
+              [ "${_guest_memory_kib}" -gt "${_maximum_guest_memory_kib}" ]; then
+              __fail "Guest MemTotal is outside 90-100% of the configured limit"
             fi
-            test -n "${_guest_ipv4_cidr}" || __fail
+            printf 'kernel=%s cpus=%s configured_memory=%s guest_memory=%sMiB\n' \
+              "${_guest_kernel}" \
+              "${_guest_cpu_count}" \
+              "${_configured_memory}" \
+              "$((_guest_memory_kib / 1024))"
+
+            __stage "Wait for DHCP IPv4 and a default route"
+            _guest_ipv4_cidr=
+            _guest_gateway=
+            for _attempt in $(seq 1 60); do
+              _guest_ipv4_cidr=$(sudo incus exec "${_test_instance}" -- \
+                ip -4 -o address show scope global 2>/dev/null \
+                | awk 'NR == 1 {print $4}' || true)
+              _guest_gateway=$(sudo incus exec "${_test_instance}" -- \
+                ip -4 route show default 2>/dev/null \
+                | awk 'NR == 1 {print $3}' || true)
+              if [ -n "${_guest_ipv4_cidr}" ] && [ -n "${_guest_gateway}" ]; then
+                break
+              fi
+              sleep 2
+            done
+            test -n "${_guest_ipv4_cidr}" || __fail \
+              "DHCP did not provide a global IPv4 address within 2 minutes"
+            test -n "${_guest_gateway}" || __fail \
+              "No IPv4 default route appeared within 2 minutes"
             _guest_ipv4=${_guest_ipv4_cidr%/*}
 
-            if ! _guest_gateway=$(sudo incus exec "${_test_instance}" -- \
-              ip -4 route show default | awk 'NR == 1 {print $3}'); then
-              __fail
-            fi
-            test -n "${_guest_gateway}" || __fail
+            sudo incus exec "${_test_instance}" -- ip -4 address show || __fail \
+              "Could not display guest IPv4 addresses"
+            sudo incus exec "${_test_instance}" -- ip -4 route show || __fail \
+              "Could not display guest IPv4 routes"
+            sudo incus exec "${_test_instance}" -- cat /etc/resolv.conf || __fail \
+              "Could not display guest resolver configuration"
 
+            __stage "Verify bidirectional bridge reachability"
             sudo incus exec "${_test_instance}" -- \
-              ping -c 3 -W 3 "${_guest_gateway}" || __fail
-            ping -c 3 -W 3 "${_guest_ipv4}" || __fail
+              ping -c 3 -W 3 "${_guest_gateway}" || __fail \
+              "Guest cannot ping its bridge gateway ${_guest_gateway}"
+            ping -c 3 -W 3 "${_guest_ipv4}" || __fail \
+              "Runner cannot ping guest ${_guest_ipv4}"
 
+            __stage "Verify guest IPv4 DNS resolution"
             if ! _dns_tencent=$(sudo incus exec "${_test_instance}" -- \
               getent ahostsv4 mirrors.cloud.tencent.com); then
-              __fail
+              __fail "Guest cannot resolve mirrors.cloud.tencent.com over IPv4"
             fi
-            test -n "${_dns_tencent}" || __fail
+            test -n "${_dns_tencent}" || __fail \
+              "mirrors.cloud.tencent.com returned no IPv4 addresses"
 
             if ! _dns_centos=$(sudo incus exec "${_test_instance}" -- \
               getent ahostsv4 vault.centos.org); then
-              __fail
+              __fail "Guest cannot resolve vault.centos.org over IPv4"
             fi
-            test -n "${_dns_centos}" || __fail
+            test -n "${_dns_centos}" || __fail \
+              "vault.centos.org returned no IPv4 addresses"
+            printf '%s\n%s\n' "${_dns_tencent}" "${_dns_centos}"
 
+            __stage "Verify guest IPv4 HTTPS repository access"
             for _url in \
               https://mirrors.cloud.tencent.com/tlinux/2.4/tlinux-tkernel4/x86_64/repodata/repomd.xml \
               https://vault.centos.org/7.9.2009/os/x86_64/repodata/repomd.xml; do
@@ -283,7 +333,7 @@ jobs:
                   --max-time 60 \
                   --output /dev/null \
                   --write-out 'status=%{http_code} remote_ip=%{remote_ip} connect=%{time_connect}s total=%{time_total}s\n' \
-                  "${_url}" || __fail
+                  "${_url}" || __fail "Guest HTTPS request failed: ${_url}"
             done
 
             {
