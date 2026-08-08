@@ -206,6 +206,36 @@ jobs:
 
           __main "$@"
 
+      - name: Set Incus VM image requirements
+        shell: bash
+        run: |
+          __main() {
+            set -euo pipefail
+
+            _metadata_archive="${OUTPUT_DIR}/vm/incus.tar.xz"
+            _metadata_dir="${RUNNER_TEMP}/incus-metadata"
+            mkdir "${_metadata_dir}"
+            tar -xJf "${_metadata_archive}" -C "${_metadata_dir}"
+            ruby -ryaml -e '
+              _path = ARGV.fetch(0)
+              _metadata = YAML.safe_load_file(_path)
+              _metadata["properties"] ||= {}
+              _metadata["properties"]["requirements.cdrom_agent"] = "true"
+              _metadata["properties"]["requirements.secureboot"] = "false"
+              File.write(_path, YAML.dump(_metadata))
+            ' "${_metadata_dir}/metadata.yaml"
+
+            _metadata_entries=(metadata.yaml)
+            if [ -d "${_metadata_dir}/templates" ]; then
+              _metadata_entries+=(templates)
+            fi
+            tar -cJf "${_metadata_archive}.new" \
+              -C "${_metadata_dir}" "${_metadata_entries[@]}"
+            mv "${_metadata_archive}.new" "${_metadata_archive}"
+          }
+
+          __main "$@"
+
       - name: Test Incus VM image
         shell: bash
         run: |
@@ -217,6 +247,7 @@ jobs:
           __diagnose() {
             sudo incus list "${_test_instance}" --format=yaml || true
             sudo incus info "${_test_instance}" --show-log || true
+            sudo incus console "${_test_instance}" --show-log || true
             sudo journalctl --no-pager --unit=incus -n 200 || true
           }
 
@@ -238,13 +269,20 @@ jobs:
               "${OUTPUT_DIR}/vm/disk.qcow2" \
               --alias "${_test_image}"
             sudo incus image list "${_test_image}" --format=json \
-              | jq -e 'length == 1 and .[0].type == "virtual-machine"'
+              | jq -e '
+                length == 1
+                and .[0].type == "virtual-machine"
+                and .[0].properties["requirements.cdrom_agent"] == "true"
+                and .[0].properties["requirements.secureboot"] == "false"
+              '
 
             sudo incus init "${_test_image}" "${_test_instance}" \
               --vm \
               -c security.secureboot=false \
               -c limits.cpu=2 \
               -c limits.memory=2GiB
+            sudo incus config device add "${_test_instance}" agent disk \
+              source=agent:config
             sudo incus start "${_test_instance}"
 
             _ready=false

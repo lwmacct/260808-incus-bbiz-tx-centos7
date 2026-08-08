@@ -35,7 +35,7 @@ CentOS Linux 7.9.2009 / tkernel 5.4.119-19.0009.67.3 / amd64 / default / VM
 5. 校验三个 RPM 的固定 SHA-256，并使用内嵌 Tlinux 公钥验证 RSA/SHA256 签名。
 6. 安装内核，显式运行 `depmod`、`dracut` 和 grub 配置，并把该版本设为默认内核。
 7. 输出 Incus 元数据和 qcow2 磁盘文件。
-8. 对 `disk.qcow2` 执行完整性检查，将镜像导入 Incus 并关闭 Secure Boot 启动。
+8. 对 `disk.qcow2` 执行完整性检查，将镜像导入 Incus，挂载 agent 配置光盘并关闭 Secure Boot 启动。
 9. 验证系统身份、架构、RPM、`uname -r`、默认 grub 内核、virtio 模块、Incus agent 和 IPv4 网络。
 10. 生成 `SHA256SUMS`，通过 ORAS 发布到 GHCR。
 
@@ -79,8 +79,11 @@ D799 A819 89B1 9BC3 210E 2759 F30E D62F 1DAC 41D4
 该内核内置 virtio block 和 virtio PCI，并将 `virtio_scsi`、
 `virtio_console`、`virtio_net`、`virtiofs` 编译为模块。镜像定义通过 dracut
 显式加入启动和 agent 设备所需的 `virtio_scsi`、`virtio_console`；网络和
-virtiofs 模块在根文件系统挂载后按需加载。内核未启用 9p；distrobuilder
-生成的 Incus agent 会继续尝试 virtiofs 和 CD-ROM 回退，启动测试会直接验证
+virtiofs 模块在根文件系统挂载后按需加载。
+
+该内核未启用 9p，而 Incus 默认使用 9p 提供 agent 配置。因此镜像元数据设置
+`requirements.cdrom_agent=true`，启动实例前必须添加
+`disk source=agent:config` 设备。CI 使用该配置光盘启动 agent，并直接验证
 agent 可用性。
 
 CentOS 7 的旧 shim 和该内核不纳入当前 Secure Boot 信任链，因此测试和使用时

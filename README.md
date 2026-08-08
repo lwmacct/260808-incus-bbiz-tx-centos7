@@ -63,12 +63,14 @@ sudo incus image import \
   --alias centos-7-tkernel-vm
 ```
 
-启动 VM 时必须关闭 Secure Boot：
+该内核没有 9p，启动 VM 时必须挂载 Incus agent 配置光盘，同时关闭 Secure Boot：
 
 ```bash
-sudo incus launch centos-7-tkernel-vm centos7-tkernel \
+sudo incus init centos-7-tkernel-vm centos7-tkernel \
   --vm \
   -c security.secureboot=false
+sudo incus config device add centos7-tkernel agent disk source=agent:config
+sudo incus start centos7-tkernel
 ```
 
 ## 生命周期和源码
