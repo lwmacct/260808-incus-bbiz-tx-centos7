@@ -32,7 +32,6 @@ env:
   IMAGE_TYPE: vm
   KERNEL_PACKAGE_VERSION: 5.4.119-19.0009.67.3.tl2
   KERNEL_RELEASE: 5.4.119-19.0009.67.3
-  KERNEL_TAG: tkernel-5.4.119-19.0009.67.3
 
 jobs:
   build:
@@ -361,9 +360,8 @@ jobs:
           __main() {
             set -euo pipefail
 
-            _tag="centos-${RELEASE}-${KERNEL_TAG}-${ARCHITECTURE}-${VARIANT}-vm-${SERIAL}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-            _stable_tag="centos-${RELEASE}-${KERNEL_TAG}-${ARCHITECTURE}-${VARIANT}-vm"
-            _major_tag="centos-7-${KERNEL_TAG}-${ARCHITECTURE}-${VARIANT}-vm"
+            _build_tag="build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            _latest_tag=latest
             (
               cd "${OUTPUT_DIR}/vm"
               oras push \
@@ -372,18 +370,17 @@ jobs:
                 --annotation "org.opencontainers.image.revision=${GITHUB_SHA}" \
                 --annotation "org.opencontainers.image.version=${SERIAL}" \
                 --annotation "io.github.lwmacct.kernel.release=${KERNEL_RELEASE}" \
-                "${OCI_REPOSITORY}:${_tag}" \
+                "${OCI_REPOSITORY}:${_build_tag}" \
                 "incus.tar.xz:${ORAS_METADATA_TYPE}" \
                 "disk.qcow2:${ORAS_DISK_TYPE}" \
                 "SHA256SUMS:${ORAS_CHECKSUM_TYPE}"
             )
-            oras tag "${OCI_REPOSITORY}:${_tag}" "${_stable_tag}" "${_major_tag}"
+            oras tag "${OCI_REPOSITORY}:${_build_tag}" "${_latest_tag}"
             {
               echo "## Published Incus VM image"
               echo
-              echo "- \`${OCI_REPOSITORY}:${_stable_tag}\`"
-              echo "- \`${OCI_REPOSITORY}:${_major_tag}\`"
-              echo "- \`${OCI_REPOSITORY}:${_tag}\`"
+              echo "- \`${OCI_REPOSITORY}:${_latest_tag}\`"
+              echo "- \`${OCI_REPOSITORY}:${_build_tag}\`"
             } >> "${GITHUB_STEP_SUMMARY}"
           }
 

@@ -48,12 +48,12 @@ Docker 的默认规则。
 
 ## GHCR 标签
 
-每次成功构建发布一个唯一标签，并更新两个固定版本标签：
+CentOS 版本和内核版本由仓库配置固定，不再重复编码到 GHCR 标签中。每次成功
+构建发布一个可追溯标签，并更新 `latest`：
 
 ```text
-centos-7.9.2009-tkernel-5.4.119-19.0009.67.3-amd64-default-vm-<YYYYmmdd_HHMM>-<run_id>-<attempt>
-centos-7.9.2009-tkernel-5.4.119-19.0009.67.3-amd64-default-vm
-centos-7-tkernel-5.4.119-19.0009.67.3-amd64-default-vm
+latest
+build-<run_id>-<attempt>
 ```
 
 发布地址：
@@ -68,7 +68,7 @@ ghcr.io/lwmacct/260808-incus-bbiz-tx-centos7
 mkdir -p out/centos7-tkernel-vm
 oras pull \
   --output out/centos7-tkernel-vm \
-  ghcr.io/lwmacct/260808-incus-bbiz-tx-centos7:centos-7-tkernel-5.4.119-19.0009.67.3-amd64-default-vm
+  ghcr.io/lwmacct/260808-incus-bbiz-tx-centos7:latest
 cd out/centos7-tkernel-vm
 sha256sum --check SHA256SUMS
 sudo incus image import \

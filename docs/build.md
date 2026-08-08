@@ -45,13 +45,12 @@ CentOS Linux 7.9.2009 / tkernel 5.4.119-19.0009.67.3 / amd64 / default / VM
 workflow 在每次镜像构建 workflow 成功后自动运行，也可以手动指定 GHCR 标签：
 
 ```bash
-gh workflow run test-network-incus-managed.yml \
-  --ref main \
-  -f image_tag=centos-7-tkernel-5.4.119-19.0009.67.3-amd64-default-vm
+gh workflow run test-network-incus-managed.yml --ref main
 ```
 
 该 workflow 不重新构建镜像，而是从 GHCR 拉取发布产物并验证 `SHA256SUMS` 和
-qcow2 完整性，然后导入 Incus。VM 使用 runner 的全部 `nproc` CPU，总内存则
+qcow2 完整性，然后导入 Incus。默认测试 `latest`；复现特定构建时可传入
+`-f image_tag=build-<run-id>-<attempt>`。VM 使用 runner 的全部 `nproc` CPU，总内存则
 按 `MemTotal - 4 GiB` 设置，给宿主和 Incus/QEMU 管理进程保留 `4 GiB`。
 
 网络实验依次验证：
@@ -72,9 +71,7 @@ workflow 仅手动触发。它将 Incus VM 的 tap 设备直接桥接到 `docker
 并按本次 run 动态生成 MAC 和单一租约。数据转发和 NAT 仍使用 Docker 默认规则。
 
 ```bash
-gh workflow run test-network-docker-default.yml \
-  --ref main \
-  -f image_tag=centos-7-tkernel-5.4.119-19.0009.67.3-amd64-default-vm
+gh workflow run test-network-docker-default.yml --ref main
 ```
 
 该方案适合临时 CI runner。长期共享宿主需要为 Docker IPAM 与 DHCP 配置互不
