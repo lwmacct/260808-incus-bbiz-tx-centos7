@@ -66,10 +66,10 @@ qcow2 完整性，然后导入 Incus。VM 使用 runner 的全部 `nproc` CPU，
 ### Docker 默认 bridge 对照实验
 
 [Test Incus VM on Docker default bridge](../.github/workflows/test-incus-vm-docker-network.yml)
-workflow 将 Incus VM 的 tap 设备直接桥接到 `docker0`，不添加额外的 iptables
-转发规则。Docker 默认 bridge 不提供 DHCP，因此该实验在 `docker0` 上启动一个
-仅提供 DHCP 的 `dnsmasq`，从 Docker IPAM 子网末端选择未占用地址并按固定 MAC
-发放单一租约。数据转发和 NAT 仍使用 Docker 默认规则。
+workflow 仅手动触发。它将 Incus VM 的 tap 设备直接桥接到 `docker0`，不添加额外
+的 iptables 转发规则。Docker 默认 bridge 不提供 DHCP，因此该实验在 `docker0`
+上启动一个仅提供 DHCP 的 `dnsmasq`，从 Docker IPAM 子网末端选择未占用地址，
+并按本次 run 动态生成 MAC 和单一租约。数据转发和 NAT 仍使用 Docker 默认规则。
 
 ```bash
 gh workflow run test-incus-vm-docker-network.yml \

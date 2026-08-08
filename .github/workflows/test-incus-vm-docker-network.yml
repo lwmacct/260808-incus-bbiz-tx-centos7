@@ -1,11 +1,6 @@
 name: Test Incus VM on Docker default bridge
 
 on:
-  workflow_run:
-    workflows:
-      - Build CentOS 7 Tlinux kernel Incus VM image
-    types:
-      - completed
   workflow_dispatch:
     inputs:
       image_tag:
@@ -22,240 +17,32 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  REGISTRY: ghcr.io
-  OCI_REPOSITORY: ghcr.io/${{ github.repository }}
-  ORAS_VERSION: 1.3.3
   DEFAULT_IMAGE_TAG: centos-7-tkernel-5.4.119-19.0009.67.3-amd64-default-vm
   KERNEL_RELEASE: 5.4.119-19.0009.67.3
 
 jobs:
   docker-network:
     name: docker0 bridge / DHCP sidecar / published VM
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
     steps:
-      - name: Install Incus and QEMU
-        shell: bash
-        run: |
-          __main() {
-            set -euo pipefail
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
+        with:
+          persist-credentials: false
 
-            sudo apt-get update
-            sudo apt-get install --yes --no-install-recommends \
-              ca-certificates \
-              curl \
-              dnsmasq-base \
-              iptables \
-              iputils-ping \
-              jq \
-              ovmf \
-              qemu-system-modules-spice \
-              qemu-system-x86 \
-              qemu-utils
-            sudo mkdir -p /etc/apt/keyrings
-            sudo curl -fsSL https://pkgs.zabbly.com/key.asc \
-              -o /etc/apt/keyrings/zabbly.asc
-            sudo tee /etc/apt/sources.list.d/zabbly-incus-stable.sources >/dev/null <<EOF
-          Enabled: yes
-          Types: deb
-          URIs: https://pkgs.zabbly.com/incus/stable
-          Suites: $(. /etc/os-release && echo "${VERSION_CODENAME}")
-          Components: main
-          Architectures: $(dpkg --print-architecture)
-          Signed-By: /etc/apt/keyrings/zabbly.asc
-          EOF
-            sudo apt-get update
-            sudo apt-get install --yes --no-install-recommends incus
-          }
-
-          __main "$@"
-
-      - name: Setup Incus without forwarding overrides
-        shell: bash
-        run: |
-          __main() {
-            set -euo pipefail
-
-            sudo systemctl enable --now incus.socket
-            sudo incus admin waitready
-            sudo incus admin init --minimal
-            sudo incus version
-          }
-
-          __main "$@"
+      - name: Prepare Incus VM test environment
+        uses: ./.github/actions/incus-vm-common
+        with:
+          image_tag: ${{ github.event.inputs.image_tag || env.DEFAULT_IMAGE_TAG }}
+          image_dir_name: published-incus-docker-network-image
+          forward_incus: "false"
+          registry_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Inspect Docker bridge and allocate DHCP lease
         shell: bash
-        run: |
-          __ipv4_to_int() {
-            local _address=$1
-            local _a
-            local _b
-            local _c
-            local _d
-
-            IFS=. read -r _a _b _c _d <<< "${_address}"
-            printf '%u\n' "$((
-              (10#${_a} << 24)
-              | (10#${_b} << 16)
-              | (10#${_c} << 8)
-              | 10#${_d}
-            ))"
-          }
-
-          __int_to_ipv4() {
-            local _value=$1
-
-            printf '%d.%d.%d.%d\n' \
-              "$(((_value >> 24) & 255))" \
-              "$(((_value >> 16) & 255))" \
-              "$(((_value >> 8) & 255))" \
-              "$((_value & 255))"
-          }
-
-          __main() {
-            set -euo pipefail
-
-            _docker_json=$(docker network inspect bridge)
-            _docker_driver=$(jq -r '.[0].Driver' <<< "${_docker_json}")
-            _docker_bridge=$(jq -r \
-              '.[0].Options["com.docker.network.bridge.name"] // "docker0"' \
-              <<< "${_docker_json}")
-            _docker_subnet=$(jq -r '.[0].IPAM.Config[0].Subnet' \
-              <<< "${_docker_json}")
-            _docker_gateway=$(jq -r '.[0].IPAM.Config[0].Gateway' \
-              <<< "${_docker_json}")
-
-            test "${_docker_driver}" = bridge
-            test -n "${_docker_subnet}" && test "${_docker_subnet}" != null
-            test -n "${_docker_gateway}" && test "${_docker_gateway}" != null
-            ip link show dev "${_docker_bridge}"
-
-            _subnet_address=${_docker_subnet%/*}
-            _prefix=${_docker_subnet#*/}
-            if [ "${_prefix}" -lt 8 ] || [ "${_prefix}" -gt 30 ]; then
-              echo "Unsupported Docker bridge prefix: ${_prefix}" >&2
-              return 1
-            fi
-
-            _host_bits=$((32 - _prefix))
-            _mask_int=$(((0xFFFFFFFF << _host_bits) & 0xFFFFFFFF))
-            _subnet_int=$(__ipv4_to_int "${_subnet_address}")
-            _network_int=$((_subnet_int & _mask_int))
-            _broadcast_int=$((_network_int | ((1 << _host_bits) - 1)))
-            _netmask=$(__int_to_ipv4 "${_mask_int}")
-            _guest_ip=
-
-            for _offset in $(seq 1 64); do
-              _candidate=$(__int_to_ipv4 "$((_broadcast_int - _offset))")
-              if [ "${_candidate}" = "${_docker_gateway}" ]; then
-                continue
-              fi
-              if jq -e --arg _ip "${_candidate}" '
-                ([((.[0].Containers // {}) | .[] |
-                  (.IPv4Address // "") | split("/")[0])] | index($_ip)) == null
-              ' <<< "${_docker_json}" >/dev/null; then
-                _guest_ip=${_candidate}
-                break
-              fi
-            done
-            test -n "${_guest_ip}"
-
-            _route_device=$(ip -4 route get "${_guest_ip}" \
-              | awk '{for (_field = 1; _field <= NF; _field++) {
-                  if ($(_field) == "dev") {print $(_field + 1); exit}
-                }}')
-            test "${_route_device}" = "${_docker_bridge}"
-
-            _docker_dns=$(awk '
-              /^nameserver / && $2 !~ /^127\./ {print $2; exit}
-            ' /run/systemd/resolve/resolv.conf 2>/dev/null || true)
-            if [ -z "${_docker_dns}" ]; then
-              _docker_dns=1.1.1.1
-            fi
-            _guest_mac=00:16:3e:dd:00:02
-
-            {
-              echo "DOCKER_BRIDGE=${_docker_bridge}"
-              echo "DOCKER_SUBNET=${_docker_subnet}"
-              echo "DOCKER_NETMASK=${_netmask}"
-              echo "DOCKER_GATEWAY=${_docker_gateway}"
-              echo "DOCKER_DNS=${_docker_dns}"
-              echo "DOCKER_GUEST_IP=${_guest_ip}"
-              echo "DOCKER_GUEST_ADDRESS=${_guest_ip}/${_prefix}"
-              echo "DOCKER_GUEST_MAC=${_guest_mac}"
-            } >> "${GITHUB_ENV}"
-
-            docker network inspect bridge
-            sudo iptables --numeric --verbose --list FORWARD
-            sudo iptables --numeric --verbose --list DOCKER-USER
-          }
-
-          __main "$@"
-
-      - name: Setup ORAS ${{ env.ORAS_VERSION }}
-        uses: oras-project/setup-oras@v2.0.1
-        with:
-          version: ${{ env.ORAS_VERSION }}
-
-      - name: Login to GHCR
-        uses: docker/login-action@v4.2.0
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull and verify published image
-        shell: bash
-        env:
-          INPUT_IMAGE_TAG: ${{ github.event.inputs.image_tag }}
-        run: |
-          __main() {
-            set -euo pipefail
-
-            _image_tag="${INPUT_IMAGE_TAG:-${DEFAULT_IMAGE_TAG}}"
-            _image_dir="${RUNNER_TEMP}/published-incus-docker-network-image"
-            mkdir "${_image_dir}"
-            oras pull --output "${_image_dir}" \
-              "${OCI_REPOSITORY}:${_image_tag}"
-            (
-              cd "${_image_dir}"
-              sha256sum --check SHA256SUMS
-              qemu-img check disk.qcow2
-            )
-            {
-              echo "IMAGE_TAG=${_image_tag}"
-              echo "IMAGE_DIR=${_image_dir}"
-            } >> "${GITHUB_ENV}"
-          }
-
-          __main "$@"
-
-      - name: Allocate runner resources
-        shell: bash
-        run: |
-          __main() {
-            set -euo pipefail
-
-            _host_cpu_count=$(nproc)
-            _host_memory_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
-            _reserved_memory_kib=$((4 * 1024 * 1024))
-            _vm_memory_mib=$(((_host_memory_kib - _reserved_memory_kib) / 1024))
-
-            if [ "${_host_cpu_count}" -lt 1 ] || [ "${_vm_memory_mib}" -lt 1024 ]; then
-              echo "Runner has insufficient resources after reserving 4 GiB" >&2
-              return 1
-            fi
-            {
-              echo "VM_CPU_COUNT=${_host_cpu_count}"
-              echo "VM_MEMORY_MIB=${_vm_memory_mib}"
-              echo "VM_MEMORY_LIMIT=${_vm_memory_mib}MiB"
-            } >> "${GITHUB_ENV}"
-          }
-
-          __main "$@"
+        run: bash scripts/prepare-docker-bridge.sh
 
       - name: Start VM on docker0 and test DHCP networking
         shell: bash
@@ -267,39 +54,6 @@ jobs:
             if sudo test -r "${_dhcp_pid_file}"; then
               sudo kill "$(sudo cat "${_dhcp_pid_file}")" 2>/dev/null || true
             fi
-          }
-
-          __diagnose() {
-            sudo incus list "${_test_instance}" --format=yaml || true
-            sudo incus info "${_test_instance}" --show-log || true
-            sudo incus exec "${_test_instance}" -- ip -4 address show || true
-            sudo incus exec "${_test_instance}" -- ip -4 route show || true
-            sudo incus exec "${_test_instance}" -- cat /etc/resolv.conf || true
-            sudo incus console "${_test_instance}" --show-log || true
-            sudo cat "${_dhcp_lease_file}" || true
-            bridge link show master "${DOCKER_BRIDGE}" || true
-            sudo iptables --numeric --verbose --list FORWARD || true
-            sudo iptables --numeric --verbose --list DOCKER-USER || true
-            sudo nft list ruleset || true
-          }
-
-          __fail() {
-            _failure_stage=$1
-            echo "::error title=Docker bridge VM experiment failed::${_failure_stage}" >&2
-            __diagnose
-            exit 1
-          }
-
-          __probe_guest_https() {
-            _url=$1
-            sudo incus exec "${_test_instance}" -- \
-              curl -4 -fsSL \
-                --retry 2 \
-                --connect-timeout 10 \
-                --max-time 60 \
-                --output /dev/null \
-                --write-out 'status=%{http_code} remote_ip=%{remote_ip} total=%{time_total}s\n' \
-                "${_url}"
           }
 
           __main() {
@@ -316,7 +70,6 @@ jobs:
               "${IMAGE_DIR}/incus.tar.xz" \
               "${IMAGE_DIR}/disk.qcow2" \
               --alias "${_test_image}"
-
             sudo incus profile create "${_test_profile}"
             sudo incus profile device add "${_test_profile}" root disk \
               path=/ pool=default
@@ -325,7 +78,6 @@ jobs:
               parent="${DOCKER_BRIDGE}" \
               name=eth0 \
               hwaddr="${DOCKER_GUEST_MAC}"
-
             sudo incus init "${_test_image}" "${_test_instance}" \
               --vm \
               --profile "${_test_profile}" \
@@ -348,98 +100,25 @@ jobs:
               --dhcp-leasefile="${_dhcp_lease_file}" \
               --pid-file="${_dhcp_pid_file}"
             sudo kill -0 "$(sudo cat "${_dhcp_pid_file}")"
-
             sudo incus start "${_test_instance}"
-            _ready=false
-            set +e
-            for _attempt in $(seq 1 120); do
-              sudo incus exec "${_test_instance}" -- true >/dev/null 2>&1
-              _agent_status=$?
-              if [ "${_agent_status}" -eq 0 ]; then
-                _ready=true
-                break
-              fi
-              sleep 5
-            done
-            set -e
-            test "${_ready}" = true || __fail \
-              "Incus agent did not become ready within 10 minutes"
-
-            _guest_kernel=$(sudo incus exec "${_test_instance}" -- uname -r) \
-              || __fail "Could not read guest kernel"
-            test "${_guest_kernel}" = "${KERNEL_RELEASE}" || __fail \
-              "Guest kernel does not match ${KERNEL_RELEASE}"
-            _guest_cpu_count=$(sudo incus exec "${_test_instance}" -- \
-              getconf _NPROCESSORS_ONLN) || __fail "Could not read guest CPUs"
-            test "${_guest_cpu_count}" = "${VM_CPU_COUNT}" || __fail \
-              "Guest CPU count does not match runner nproc"
-            _configured_memory=$(sudo incus config get \
-              "${_test_instance}" limits.memory) || __fail \
-              "Could not read VM memory limit"
-            test "${_configured_memory}" = "${VM_MEMORY_LIMIT}" || __fail \
-              "VM memory limit does not reserve exactly 4 GiB for the host"
 
             _host_nic=$(sudo incus config get \
               "${_test_instance}" volatile.eth0.host_name)
-            test -n "${_host_nic}" || __fail "Incus did not expose the host tap name"
+            test -n "${_host_nic}"
             bridge -j link show dev "${_host_nic}" \
               | jq -e --arg _master "${DOCKER_BRIDGE}" \
-                'length == 1 and .[0].master == $_master' \
-              || __fail "VM tap is not attached to ${DOCKER_BRIDGE}"
+                'length == 1 and .[0].master == $_master'
 
-            _guest_ipv4_cidr=
-            _guest_gateway=
-            for _attempt in $(seq 1 60); do
-              _guest_ipv4_cidr=$(sudo incus exec "${_test_instance}" -- \
-                ip -4 -o address show dev eth0 scope global 2>/dev/null \
-                | awk 'NR == 1 {print $4}' || true)
-              _guest_gateway=$(sudo incus exec "${_test_instance}" -- \
-                ip -4 route show default 2>/dev/null \
-                | awk 'NR == 1 {print $3}' || true)
-              if [ -n "${_guest_ipv4_cidr}" ] && [ -n "${_guest_gateway}" ]; then
-                break
-              fi
-              sleep 2
-            done
-            test "${_guest_ipv4_cidr}" = "${DOCKER_GUEST_ADDRESS}" || __fail \
-              "VM did not receive the reserved docker0 DHCP address"
-            test "${_guest_gateway}" = "${DOCKER_GATEWAY}" || __fail \
-              "VM did not receive the Docker bridge gateway"
+            export TEST_INSTANCE="${_test_instance}"
+            export NETWORK_INTERFACE=eth0
+            export NETWORK_LABEL="Docker default bridge"
+            export NETWORK_EXPECTED_ADDRESS="${DOCKER_GUEST_ADDRESS}"
+            export NETWORK_EXPECTED_GATEWAY="${DOCKER_GATEWAY}"
+            export NETWORK_PARENT="${DOCKER_BRIDGE}"
+            export DHCP_LEASE_FILE="${_dhcp_lease_file}"
+            export REQUIRE_TENCENT=true
+            bash scripts/incus-vm-network-check.sh
             sudo cat "${_dhcp_lease_file}"
-
-            sudo incus exec "${_test_instance}" -- \
-              ping -c 3 -W 3 "${DOCKER_GATEWAY}" || __fail \
-              "VM cannot ping the Docker bridge gateway"
-            ping -c 3 -W 3 "${DOCKER_GUEST_IP}" || __fail \
-              "Runner cannot ping the VM through docker0"
-
-            sudo incus exec "${_test_instance}" -- \
-              getent ahostsv4 mirrors.cloud.tencent.com || __fail \
-              "VM cannot resolve the Tencent mirror"
-            __probe_guest_https \
-              https://mirrors.cloud.tencent.com/tlinux/2.4/tlinux-tkernel4/x86_64/repodata/repomd.xml \
-              || __fail "VM cannot reach the Tencent mirror through Docker NAT"
-            __probe_guest_https \
-              https://vault.centos.org/7.9.2009/os/x86_64/repodata/repomd.xml \
-              || __fail "VM cannot reach CentOS Vault through Docker NAT"
-
-            {
-              echo "## Docker default bridge VM result"
-              echo
-              printf -- '- Image tag: %s\n' "${IMAGE_TAG}"
-              printf -- '- Kernel: %s\n' "${_guest_kernel}"
-              printf -- '- VM CPUs: %s\n' "${_guest_cpu_count}"
-              printf -- '- VM memory limit: %s\n' "${_configured_memory}"
-              printf -- '- Docker network: %s (%s)\n' \
-                "${DOCKER_BRIDGE}" "${DOCKER_SUBNET}"
-              printf -- '- VM tap: %s -> %s\n' \
-                "${_host_nic}" "${DOCKER_BRIDGE}"
-              printf -- '- DHCP address: %s\n' "${_guest_ipv4_cidr}"
-              printf -- '- Gateway: %s\n' "${_guest_gateway}"
-              printf -- '- DNS: %s\n' "${DOCKER_DNS}"
-              echo 'DHCP, Docker bridge attachment, bidirectional ICMP, DNS and repository HTTPS: passed'
-            } >> "${GITHUB_STEP_SUMMARY}"
-
             sudo incus stop --force "${_test_instance}"
           }
 

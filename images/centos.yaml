@@ -90,7 +90,7 @@ files:
     NETWORKING=yes
     HOSTNAME={{ container.name }}
 
-- path: /etc/sysconfig/network-scripts/ifcfg-enp5s0
+- path: /etc/sysconfig/network-scripts/ifcfg-eth0
   generator: template
   content: |-
     DEVICE=enp5s0

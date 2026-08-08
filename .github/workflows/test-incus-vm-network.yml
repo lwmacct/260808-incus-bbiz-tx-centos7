@@ -22,224 +22,39 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  REGISTRY: ghcr.io
-  OCI_REPOSITORY: ghcr.io/${{ github.repository }}
-  ORAS_VERSION: 1.3.3
   DEFAULT_IMAGE_TAG: centos-7-tkernel-5.4.119-19.0009.67.3-amd64-default-vm
   KERNEL_RELEASE: 5.4.119-19.0009.67.3
 
 jobs:
   network:
-    name: published image / full runner CPU / host reserves 4 GiB
+    name: published image / Incus managed bridge / host reserves 4 GiB
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
     steps:
-      - name: Install Incus and QEMU
-        shell: bash
-        run: |
-          __main() {
-            set -euo pipefail
-
-            sudo apt-get update
-            sudo apt-get install --yes --no-install-recommends \
-              ca-certificates \
-              curl \
-              dnsmasq-base \
-              iptables \
-              iputils-ping \
-              jq \
-              ovmf \
-              qemu-system-modules-spice \
-              qemu-system-x86 \
-              qemu-utils
-            sudo mkdir -p /etc/apt/keyrings
-            sudo curl -fsSL https://pkgs.zabbly.com/key.asc \
-              -o /etc/apt/keyrings/zabbly.asc
-            sudo tee /etc/apt/sources.list.d/zabbly-incus-stable.sources >/dev/null <<EOF
-          Enabled: yes
-          Types: deb
-          URIs: https://pkgs.zabbly.com/incus/stable
-          Suites: $(. /etc/os-release && echo "${VERSION_CODENAME}")
-          Components: main
-          Architectures: $(dpkg --print-architecture)
-          Signed-By: /etc/apt/keyrings/zabbly.asc
-          EOF
-            sudo apt-get update
-            sudo apt-get install --yes --no-install-recommends incus
-          }
-
-          __main "$@"
-
-      - name: Setup Incus
-        shell: bash
-        run: |
-          __main() {
-            set -euo pipefail
-
-            sudo systemctl enable --now incus.socket
-            sudo incus admin waitready
-            sudo incus admin init --minimal
-
-            _forward_chain=FORWARD
-            if sudo iptables --wait 5 --numeric --list DOCKER-USER \
-              >/dev/null 2>&1; then
-              _forward_chain=DOCKER-USER
-            fi
-            sudo iptables --wait 5 --check "${_forward_chain}" \
-              --in-interface incusbr0 --jump ACCEPT 2>/dev/null \
-              || sudo iptables --wait 5 --insert "${_forward_chain}" 1 \
-                --in-interface incusbr0 --jump ACCEPT
-            sudo iptables --wait 5 --check "${_forward_chain}" \
-              --out-interface incusbr0 \
-              --match conntrack --ctstate RELATED,ESTABLISHED \
-              --jump ACCEPT 2>/dev/null \
-              || sudo iptables --wait 5 --insert "${_forward_chain}" 1 \
-                --out-interface incusbr0 \
-                --match conntrack --ctstate RELATED,ESTABLISHED \
-                --jump ACCEPT
-
-            sudo incus version
-            sudo incus network show incusbr0
-            sudo iptables --numeric --verbose --list "${_forward_chain}"
-          }
-
-          __main "$@"
-
-      - name: Setup ORAS ${{ env.ORAS_VERSION }}
-        uses: oras-project/setup-oras@v2.0.1
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
         with:
-          version: ${{ env.ORAS_VERSION }}
+          persist-credentials: false
 
-      - name: Login to GHCR
-        uses: docker/login-action@v4.2.0
+      - name: Prepare Incus VM test environment
+        uses: ./.github/actions/incus-vm-common
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          image_tag: ${{ github.event.inputs.image_tag || env.DEFAULT_IMAGE_TAG }}
+          image_dir_name: published-incus-image
+          forward_incus: "true"
+          registry_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull and verify published image
+      - name: Start VM and test Incus managed networking
         shell: bash
         env:
-          INPUT_IMAGE_TAG: ${{ github.event.inputs.image_tag }}
-        run: |
-          __main() {
-            set -euo pipefail
-
-            _image_tag="${INPUT_IMAGE_TAG:-${DEFAULT_IMAGE_TAG}}"
-            _image_dir="${RUNNER_TEMP}/published-incus-image"
-            mkdir "${_image_dir}"
-            oras pull --output "${_image_dir}" \
-              "${OCI_REPOSITORY}:${_image_tag}"
-            (
-              cd "${_image_dir}"
-              sha256sum --check SHA256SUMS
-              qemu-img check disk.qcow2
-            )
-            {
-              echo "IMAGE_TAG=${_image_tag}"
-              echo "IMAGE_DIR=${_image_dir}"
-            } >> "${GITHUB_ENV}"
-          }
-
-          __main "$@"
-
-      - name: Allocate runner resources
-        shell: bash
-        run: |
-          __main() {
-            set -euo pipefail
-
-            _host_cpu_count=$(nproc)
-            _host_memory_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
-            _reserved_memory_kib=$((4 * 1024 * 1024))
-            _vm_memory_mib=$(((_host_memory_kib - _reserved_memory_kib) / 1024))
-
-            if [ "${_host_cpu_count}" -lt 1 ] || [ "${_vm_memory_mib}" -lt 1024 ]; then
-              echo "Runner has insufficient resources after reserving 4 GiB" >&2
-              return 1
-            fi
-
-            {
-              echo "VM_CPU_COUNT=${_host_cpu_count}"
-              echo "VM_MEMORY_MIB=${_vm_memory_mib}"
-              echo "VM_MEMORY_LIMIT=${_vm_memory_mib}MiB"
-            } >> "${GITHUB_ENV}"
-            {
-              echo "## Runner allocation"
-              echo
-              printf -- '- Runner CPUs: %s\n' "${_host_cpu_count}"
-              printf -- '- Runner memory: %s MiB\n' "$((_host_memory_kib / 1024))"
-              printf -- '- Host memory reserve: 4096 MiB\n'
-              printf -- '- VM CPUs: %s\n' "${_host_cpu_count}"
-              printf -- '- VM memory limit: %s MiB\n' "${_vm_memory_mib}"
-            } >> "${GITHUB_STEP_SUMMARY}"
-          }
-
-          __main "$@"
-
-      - name: Start VM and test networking
-        shell: bash
+          NETWORK_LABEL: Incus managed bridge
+          REQUIRE_TENCENT: "false"
         run: |
           __cleanup() {
             sudo incus delete --force "${_test_instance}" 2>/dev/null || true
             sudo incus image delete "${_test_image}" 2>/dev/null || true
-          }
-
-          __diagnose() {
-            sudo incus list "${_test_instance}" --format=yaml || true
-            sudo incus info "${_test_instance}" --show-log || true
-            sudo incus exec "${_test_instance}" -- ip -4 address show || true
-            sudo incus exec "${_test_instance}" -- ip -4 route show || true
-            sudo incus exec "${_test_instance}" -- cat /etc/resolv.conf || true
-            sudo incus exec "${_test_instance}" -- \
-              systemctl --no-pager --full status NetworkManager network || true
-            sudo incus console "${_test_instance}" --show-log || true
-            sudo incus network show incusbr0 || true
-            sudo sysctl net.ipv4.ip_forward || true
-            sudo iptables --numeric --verbose --list FORWARD || true
-            sudo iptables --numeric --verbose --list DOCKER-USER || true
-            sudo nft list ruleset || true
-            ip -4 address show || true
-            ip -4 route show || true
-            sudo journalctl --no-pager --unit=incus -n 200 || true
-          }
-
-          __fail() {
-            _failure_stage=$1
-            echo "::error title=VM network experiment failed::${_failure_stage}" >&2
-            __diagnose
-            exit 1
-          }
-
-          __stage() {
-            printf '\n==> %s\n' "$1"
-          }
-
-          __probe_runner_https() {
-            _url=$1
-            printf 'origin=runner url=%s\n' "${_url}"
-            curl -4 -fsSL \
-              --retry 2 \
-              --connect-timeout 10 \
-              --max-time 60 \
-              --output /dev/null \
-              --write-out 'status=%{http_code} remote_ip=%{remote_ip} connect=%{time_connect}s total=%{time_total}s\n' \
-              "${_url}"
-          }
-
-          __probe_guest_https() {
-            _url=$1
-            printf 'origin=guest url=%s\n' "${_url}"
-            sudo incus exec "${_test_instance}" -- \
-              curl -4 -fsSL \
-                --retry 2 \
-                --connect-timeout 10 \
-                --max-time 60 \
-                --output /dev/null \
-                --write-out 'status=%{http_code} remote_ip=%{remote_ip} connect=%{time_connect}s total=%{time_total}s\n' \
-                "${_url}"
           }
 
           __main() {
@@ -260,7 +75,6 @@ jobs:
                 and .[0].properties["requirements.cdrom_agent"] == "true"
                 and .[0].properties["requirements.secureboot"] == "false"
               '
-
             sudo incus init "${_test_image}" "${_test_instance}" \
               --vm \
               -c security.secureboot=false \
@@ -270,159 +84,9 @@ jobs:
               source=agent:config
             sudo incus start "${_test_instance}"
 
-            _ready=false
-            set +e
-            for _attempt in $(seq 1 120); do
-              sudo incus exec "${_test_instance}" -- true >/dev/null 2>&1
-              _agent_status=$?
-              if [ "${_agent_status}" -eq 0 ]; then
-                _ready=true
-                break
-              fi
-              sleep 5
-            done
-            set -e
-            test "${_ready}" = true || __fail \
-              "Incus agent did not become ready within 10 minutes"
-
-            __stage "Verify kernel and allocated resources"
-            if ! _guest_kernel=$(sudo incus exec "${_test_instance}" -- uname -r); then
-              __fail "Could not read the guest kernel release"
-            fi
-            test "${_guest_kernel}" = "${KERNEL_RELEASE}" || __fail \
-              "Guest kernel ${_guest_kernel} does not match ${KERNEL_RELEASE}"
-
-            if ! _guest_cpu_count=$(sudo incus exec "${_test_instance}" -- getconf _NPROCESSORS_ONLN); then
-              __fail "Could not read the guest online CPU count"
-            fi
-            test "${_guest_cpu_count}" = "${VM_CPU_COUNT}" || __fail \
-              "Guest has ${_guest_cpu_count} online CPUs; expected ${VM_CPU_COUNT}"
-
-            if ! _configured_memory=$(sudo incus config get \
-              "${_test_instance}" limits.memory); then
-              __fail "Could not read the VM memory limit"
-            fi
-            test "${_configured_memory}" = "${VM_MEMORY_LIMIT}" || __fail \
-              "VM memory limit ${_configured_memory} does not match ${VM_MEMORY_LIMIT}"
-
-            if ! _guest_memory_kib=$(sudo incus exec "${_test_instance}" -- \
-              awk '/^MemTotal:/ {print $2}' /proc/meminfo); then
-              __fail "Could not read guest MemTotal"
-            fi
-            _minimum_guest_memory_kib=$((VM_MEMORY_MIB * 90 * 1024 / 100))
-            _maximum_guest_memory_kib=$((VM_MEMORY_MIB * 1024))
-            if [ "${_guest_memory_kib}" -lt "${_minimum_guest_memory_kib}" ] || \
-              [ "${_guest_memory_kib}" -gt "${_maximum_guest_memory_kib}" ]; then
-              __fail "Guest MemTotal is outside 90-100% of the configured limit"
-            fi
-            printf 'kernel=%s cpus=%s configured_memory=%s guest_memory=%sMiB\n' \
-              "${_guest_kernel}" \
-              "${_guest_cpu_count}" \
-              "${_configured_memory}" \
-              "$((_guest_memory_kib / 1024))"
-
-            __stage "Wait for DHCP IPv4 and a default route"
-            _guest_ipv4_cidr=
-            _guest_gateway=
-            for _attempt in $(seq 1 60); do
-              _guest_ipv4_cidr=$(sudo incus exec "${_test_instance}" -- \
-                ip -4 -o address show scope global 2>/dev/null \
-                | awk 'NR == 1 {print $4}' || true)
-              _guest_gateway=$(sudo incus exec "${_test_instance}" -- \
-                ip -4 route show default 2>/dev/null \
-                | awk 'NR == 1 {print $3}' || true)
-              if [ -n "${_guest_ipv4_cidr}" ] && [ -n "${_guest_gateway}" ]; then
-                break
-              fi
-              sleep 2
-            done
-            test -n "${_guest_ipv4_cidr}" || __fail \
-              "DHCP did not provide a global IPv4 address within 2 minutes"
-            test -n "${_guest_gateway}" || __fail \
-              "No IPv4 default route appeared within 2 minutes"
-            _guest_ipv4=${_guest_ipv4_cidr%/*}
-
-            sudo incus exec "${_test_instance}" -- ip -4 address show || __fail \
-              "Could not display guest IPv4 addresses"
-            sudo incus exec "${_test_instance}" -- ip -4 route show || __fail \
-              "Could not display guest IPv4 routes"
-            sudo incus exec "${_test_instance}" -- cat /etc/resolv.conf || __fail \
-              "Could not display guest resolver configuration"
-
-            __stage "Verify bidirectional bridge reachability"
-            sudo incus exec "${_test_instance}" -- \
-              ping -c 3 -W 3 "${_guest_gateway}" || __fail \
-              "Guest cannot ping its bridge gateway ${_guest_gateway}"
-            ping -c 3 -W 3 "${_guest_ipv4}" || __fail \
-              "Runner cannot ping guest ${_guest_ipv4}"
-
-            __stage "Verify guest IPv4 DNS resolution"
-            if ! _dns_tencent=$(sudo incus exec "${_test_instance}" -- \
-              getent ahostsv4 mirrors.cloud.tencent.com); then
-              __fail "Guest cannot resolve mirrors.cloud.tencent.com over IPv4"
-            fi
-            test -n "${_dns_tencent}" || __fail \
-              "mirrors.cloud.tencent.com returned no IPv4 addresses"
-
-            if ! _dns_centos=$(sudo incus exec "${_test_instance}" -- \
-              getent ahostsv4 vault.centos.org); then
-              __fail "Guest cannot resolve vault.centos.org over IPv4"
-            fi
-            test -n "${_dns_centos}" || __fail \
-              "vault.centos.org returned no IPv4 addresses"
-            printf '%s\n%s\n' "${_dns_tencent}" "${_dns_centos}"
-
-            __stage "Compare runner and guest IPv4 HTTPS access"
-            _tencent_url=https://mirrors.cloud.tencent.com/tlinux/2.4/tlinux-tkernel4/x86_64/repodata/repomd.xml
-            _vault_url=https://vault.centos.org/7.9.2009/os/x86_64/repodata/repomd.xml
-            _tencent_runner_ok=false
-            _tencent_guest_ok=false
-            _vault_runner_ok=false
-            _vault_guest_ok=false
-
-            if __probe_runner_https "${_tencent_url}"; then
-              _tencent_runner_ok=true
-            fi
-            if __probe_guest_https "${_tencent_url}"; then
-              _tencent_guest_ok=true
-            fi
-            if __probe_runner_https "${_vault_url}"; then
-              _vault_runner_ok=true
-            fi
-            if __probe_guest_https "${_vault_url}"; then
-              _vault_guest_ok=true
-            fi
-
-            test "${_vault_guest_ok}" = true || __fail \
-              "Guest cannot reach the CentOS Vault HTTPS control endpoint"
-
-            _tencent_result=passed
-            if [ "${_tencent_guest_ok}" != true ]; then
-              if [ "${_tencent_runner_ok}" = true ]; then
-                __fail "Tencent HTTPS works on the runner but not in the guest"
-              fi
-              _tencent_result="unreachable from both runner and guest"
-              echo "::warning title=Tencent mirror external reachability::The Tencent mirror is unreachable from both the runner and guest; Incus NAT is not the differentiator"
-            fi
-
-            {
-              echo
-              echo "## Guest network result"
-              echo
-              printf -- '- Image tag: %s\n' "${IMAGE_TAG}"
-              printf -- '- Kernel: %s\n' "${_guest_kernel}"
-              printf -- '- Guest CPUs online: %s\n' "${_guest_cpu_count}"
-              printf -- '- Guest memory: %s MiB\n' "$((_guest_memory_kib / 1024))"
-              printf -- '- Guest IPv4: %s\n' "${_guest_ipv4_cidr}"
-              printf -- '- Default gateway: %s\n' "${_guest_gateway}"
-              printf -- '- Tencent HTTPS (runner): %s\n' "${_tencent_runner_ok}"
-              printf -- '- Tencent HTTPS (guest): %s (%s)\n' \
-                "${_tencent_guest_ok}" "${_tencent_result}"
-              printf -- '- CentOS Vault HTTPS (runner): %s\n' "${_vault_runner_ok}"
-              printf -- '- CentOS Vault HTTPS (guest): %s\n' "${_vault_guest_ok}"
-              echo 'DHCP, default route, bidirectional bridge ICMP, DNS and control IPv4 HTTPS: passed'
-            } >> "${GITHUB_STEP_SUMMARY}"
-
+            export TEST_INSTANCE="${_test_instance}"
+            export NETWORK_INTERFACE=eth0
+            bash scripts/incus-vm-network-check.sh
             sudo incus stop --force "${_test_instance}"
           }
 

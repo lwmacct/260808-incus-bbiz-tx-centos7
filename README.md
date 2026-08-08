@@ -41,9 +41,10 @@ Incus agent 和网络。
 `4 GiB` 后全部设置为 VM 内存上限。它验证 DHCP、默认路由、VM 与宿主的桥接
 连通性、DNS，以及 VM 到腾讯镜像和 CentOS Vault 的 IPv4 HTTPS。
 
-Docker bridge 对照 workflow 将 VM 网卡直接桥接到 `docker0`。由于 Docker
-默认网络不提供 DHCP，它在 `docker0` 上启动仅提供 DHCP 的 `dnsmasq`，并使用
-固定 MAC 发放单一租约；VM 的转发和 NAT 则完全使用 Docker 的默认规则。
+Docker bridge 对照 workflow 仅手动触发。它将 VM 网卡直接桥接到 `docker0`。
+由于 Docker 默认网络不提供 DHCP，它在 `docker0` 上启动仅提供 DHCP 的
+`dnsmasq`，并按本次 run 动态生成 MAC 和单一租约；VM 的转发和 NAT 则完全使用
+Docker 的默认规则。
 
 ## GHCR 标签
 
