@@ -50,9 +50,10 @@ gh workflow run test-network-incus-managed.yml --ref main
 ```
 
 该 workflow 不重新构建镜像，而是从 GHCR 拉取发布产物并验证 `SHA256SUMS` 和
-qcow2 完整性，然后导入 Incus。默认测试 `standard-latest`；复现特定构建时可传入
-`-f image_tag=standard-sha-<git-commit-id-12>`。VM 使用 runner 的全部 `nproc` CPU，总内存则
-按 `MemTotal - 4 GiB` 设置，给宿主和 Incus/QEMU 管理进程保留 `4 GiB`。
+qcow2 完整性，然后导入 Incus。默认测试 `artifact-standard-latest`；复现特定
+构建时可传入 `-f image_tag=artifact-standard-sha-<git-commit-id-12>`。VM 使用
+runner 的全部 `nproc` CPU，总内存则按 `MemTotal - 4 GiB` 设置，给宿主和
+Incus/QEMU 管理进程保留 `4 GiB`。
 
 网络实验依次验证：
 

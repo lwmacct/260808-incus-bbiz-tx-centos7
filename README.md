@@ -74,13 +74,14 @@ Docker 的默认规则。
 
 ## GHCR 标签
 
-CentOS 版本和内核版本由仓库配置固定，不再重复编码到 GHCR 标签中。tag 前缀取自
-镜像定义文件名，`standard` 对应 [`images/standard.yaml`](images/standard.yaml)。每次
-成功构建发布一个使用 12 位 Git 提交 ID 的可追溯标签，并更新 `standard-latest`：
+CentOS 版本和内核版本由仓库配置固定，不再重复编码到 GHCR 标签中。所有标签使用
+`artifact-` 前缀，后接镜像定义文件名；`standard` 对应
+[`images/standard.yaml`](images/standard.yaml)。每次成功构建发布一个使用 12 位 Git
+提交 ID 的可追溯标签，并更新 `artifact-standard-latest`：
 
 ```text
-standard-latest
-standard-sha-<git-commit-id-12>
+artifact-standard-latest
+artifact-standard-sha-<git-commit-id-12>
 ```
 
 发布地址：
@@ -95,7 +96,7 @@ ghcr.io/lwmacct/260808-incus-bbiz-tx-centos7
 mkdir -p out/centos7-tkernel-vm
 oras pull \
   --output out/centos7-tkernel-vm \
-  ghcr.io/lwmacct/260808-incus-bbiz-tx-centos7:standard-latest
+  ghcr.io/lwmacct/260808-incus-bbiz-tx-centos7:artifact-standard-latest
 cd out/centos7-tkernel-vm
 sha256sum --check SHA256SUMS
 sudo incus image import \

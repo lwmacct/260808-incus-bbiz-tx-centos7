@@ -426,8 +426,8 @@ jobs:
             _image_name="${_image_file_name%.yaml}"
             _full_sha=$(git rev-parse HEAD)
             _short_sha="${_full_sha:0:12}"
-            _revision_tag="${_image_name}-sha-${_short_sha}"
-            _latest_tag="${_image_name}-latest"
+            _revision_tag="artifact-${_image_name}-sha-${_short_sha}"
+            _latest_tag="artifact-${_image_name}-latest"
             (
               cd "${OUTPUT_DIR}/vm"
               oras push \
