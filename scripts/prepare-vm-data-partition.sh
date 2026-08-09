@@ -78,8 +78,7 @@ __main() {
   mkfs.xfs \
     -f \
     -L "${_filesystem_label}" \
-    -d "file=1,name=${_filesystem_image_path},size=${_data_partition_bytes}" \
-    "${_filesystem_image_path}"
+    -d "file=1,name=${_filesystem_image_path},size=${_data_partition_bytes}"
   dd \
     if="${_filesystem_image_path}" \
     of="${_raw_path}" \
