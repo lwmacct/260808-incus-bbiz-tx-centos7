@@ -69,6 +69,11 @@ targets:
     - type: all
       content: |-
         lxc.arch = {{ image.architecture_kernel }}
+  incus:
+    vm:
+      # The workflow expands the image to 100 GiB and uses the tail for data.
+      size: 42949672960
+      filesystem: ext4
 
 files:
 - path: /etc/hostname
@@ -291,42 +296,35 @@ actions:
       rm -f /var/lib/dbus/machine-id
     }
 
+    __configure_pcdn_data_mount() {
+      install -d -m 0755 /pcdn_data/pcdn_index_data
+      grep -qF 'LABEL=pcdn_index_data /pcdn_data/pcdn_index_data ' /etc/fstab \
+        || printf '%s\n' \
+          'LABEL=pcdn_index_data /pcdn_data/pcdn_index_data ext4 defaults 0 2' \
+          >> /etc/fstab
+    }
+
     __install_tlinux_kernel() {
       _kernel_base_url=https://mirrors.cloud.tencent.com/tlinux/2.4/tlinux-tkernel4/x86_64/RPMS
       _kernel_dir=/tmp/tlinux-kernel
 
       mkdir -p "${_kernel_dir}"
-      for _package in \
-        kernel-5.4.119-19.0009.67.3.tl2.x86_64.rpm \
-        kernel-core-5.4.119-19.0009.67.3.tl2.x86_64.rpm \
-        kernel-modules-5.4.119-19.0009.67.3.tl2.x86_64.rpm; do
-        curl -fsSL --retry 3 --retry-delay 2 \
-          -o "${_kernel_dir}/${_package}" \
-          "${_kernel_base_url}/${_package}"
-      done
+      _package=kernel-5.4.119-19.0006.tl2.x86_64.rpm
+      curl -fsSL --retry 3 --retry-delay 2 \
+        -o "${_kernel_dir}/${_package}" \
+        "${_kernel_base_url}/${_package}"
 
       (
         cd "${_kernel_dir}"
         sha256sum --check <<'EOF'
-    5faa0b0ac3fd74ba3d8357cb3a9a0358c1f2282d2a87288c3faf4b6a43c18581  kernel-5.4.119-19.0009.67.3.tl2.x86_64.rpm
-    5b551268d8de1ae3c6dd0f956131b49ac6a5e968516af0b688095dd1545bc78d  kernel-core-5.4.119-19.0009.67.3.tl2.x86_64.rpm
-    18230ae693aa8e6e99e44ae0812fb8704d3cb4401cce0d4e27982841bf721c24  kernel-modules-5.4.119-19.0009.67.3.tl2.x86_64.rpm
+    6b3f5af7d3985d81e8bf07e4240b44f47aa1324f5f5b2517e2908091d91107fb  kernel-5.4.119-19.0006.tl2.x86_64.rpm
     EOF
       )
 
       rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-Tlinux-2
-      for _package in "${_kernel_dir}"/*.rpm; do
-        rpm --checksig "${_package}"
-      done
-
-      yum install --assumeyes \
-        "${_kernel_dir}/kernel-core-5.4.119-19.0009.67.3.tl2.x86_64.rpm" \
-        "${_kernel_dir}/kernel-modules-5.4.119-19.0009.67.3.tl2.x86_64.rpm" \
-        "${_kernel_dir}/kernel-5.4.119-19.0009.67.3.tl2.x86_64.rpm"
-
-      for _package in kernel kernel-core kernel-modules; do
-        rpm -q "${_package}-5.4.119-19.0009.67.3.tl2.x86_64"
-      done
+      rpm --checksig "${_kernel_dir}/${_package}"
+      yum install --assumeyes "${_kernel_dir}/${_package}"
+      rpm -q kernel-5.4.119-19.0006.tl2.x86_64
 
       yum clean all
       rm -f "${_kernel_dir}"/*.rpm
@@ -340,11 +338,9 @@ actions:
     }
 
     __configure_boot() {
-      _kernel_version=5.4.119-19.0009.67.3
+      _kernel_version=5.4.119-19-0006
 
-      install -m 0600 \
-        "/lib/modules/${_kernel_version}/vmlinuz" \
-        "/boot/vmlinuz-${_kernel_version}"
+      test -f "/boot/vmlinuz-${_kernel_version}"
       depmod -a "${_kernel_version}"
       dracut --kver "${_kernel_version}" --force
 
@@ -415,6 +411,7 @@ actions:
       __prepare_machine_id
       __install_tlinux_kernel
       __configure_boot
+      __configure_pcdn_data_mount
       __configure_runtime_repositories
       __reset_machine_id
 

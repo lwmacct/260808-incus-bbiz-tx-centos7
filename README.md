@@ -4,7 +4,9 @@
 
 - 系统：CentOS Linux `7.9.2009`
 - 架构：`amd64`（内核和 distrobuilder 使用 `x86_64`）
-- 内核：Tencent Linux `5.4.119-19.0009.67.3`
+- 内核 RPM：Tencent Linux `5.4.119-19.0006.tl2`
+- 运行内核：`5.4.119-19-0006`
+- 默认磁盘：`100 GiB`，其中约 `60 GiB` 独立挂载到 `/pcdn_data/pcdn_index_data`
 - 类型：仅 VM
 - 产物：`incus.tar.xz`、`disk.qcow2`、`SHA256SUMS`
 
@@ -32,13 +34,11 @@ Vault 镜像池，按腾讯云、阿里云、华为云、南京大学和哈尔�
 ## 固定内核
 
 镜像不会启用 TencentOS 软件源，也不会安装会改变系统身份的 `tlinux-release`。
-构建期间只下载以下三个固定 RPM，并同时验证 SHA-256 和 Tlinux RPM 签名：
+构建期间只下载以下固定 RPM，并同时验证 SHA-256 和 Tlinux RPM 签名：
 
-| RPM                                                  | SHA-256                                                            |
-| ---------------------------------------------------- | ------------------------------------------------------------------ |
-| `kernel-5.4.119-19.0009.67.3.tl2.x86_64.rpm`         | `5faa0b0ac3fd74ba3d8357cb3a9a0358c1f2282d2a87288c3faf4b6a43c18581` |
-| `kernel-core-5.4.119-19.0009.67.3.tl2.x86_64.rpm`    | `5b551268d8de1ae3c6dd0f956131b49ac6a5e968516af0b688095dd1545bc78d` |
-| `kernel-modules-5.4.119-19.0009.67.3.tl2.x86_64.rpm` | `18230ae693aa8e6e99e44ae0812fb8704d3cb4401cce0d4e27982841bf721c24` |
+| RPM                                            | SHA-256                                                            |
+| ---------------------------------------------- | ------------------------------------------------------------------ |
+| `kernel-5.4.119-19.0006.tl2.x86_64.rpm`        | `6b3f5af7d3985d81e8bf07e4240b44f47aa1324f5f5b2517e2908091d91107fb` |
 
 Tlinux 签名密钥指纹：
 
@@ -47,8 +47,19 @@ D799 A819 89B1 9BC3 210E 2759 F30E D62F 1DAC 41D4
 ```
 
 VM 启动后，workflow 会精确验证 `uname -r` 为
-`5.4.119-19.0009.67.3`，并检查三个 RPM、默认 grub 内核、virtio 模块、
-Incus agent 和网络。
+`5.4.119-19-0006`，并检查 RPM、默认 grub 内核、virtio 模块、Incus agent、
+磁盘布局和网络。
+
+## 默认磁盘布局
+
+成品 `disk.qcow2` 的虚拟容量固定为 `100 GiB`，包含 `100 MiB` EFI 分区、约
+`39.9 GiB` 根分区，以及使用剩余空间创建的约 `60 GiB` ext4 数据分区。数据
+分区的文件系统标签和 GPT 分区标签均为 `pcdn_index_data`，通过 `/etc/fstab`
+挂载到 `/pcdn_data/pcdn_index_data`。
+
+该虚拟容量也是 Incus 创建实例时的最小根盘容量；显式配置小于 `100 GiB` 的
+实例或存储池 volume size 会被拒绝。把实例根盘扩大到 `100 GiB` 以上不会自动
+扩展数据分区，新增空间需要另行分配。
 
 独立网络 workflow 会把 runner 的全部可用 CPU 分配给 VM，并把总内存减去
 `4 GiB` 后全部设置为 VM 内存上限。它验证 DHCP、默认路由、VM 与宿主的桥接
@@ -98,6 +109,7 @@ sudo incus init centos-7-tkernel-vm centos7-tkernel --vm \
   -c security.secureboot=false
 sudo incus config device add centos7-tkernel agent disk source=agent:config
 sudo incus start centos7-tkernel
+sudo incus exec centos7-tkernel -- findmnt /pcdn_data/pcdn_index_data
 ```
 
 ## 生命周期和源码

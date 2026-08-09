@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - images/standard.yaml
+      - scripts/prepare-vm-data-partition.sh
       - .github/workflows/build-images-standard.yml
   workflow_dispatch:
 
@@ -29,12 +30,16 @@ env:
   RELEASE: 7.9.2009
   VARIANT: default
   IMAGE_TYPE: vm
-  KERNEL_PACKAGE_VERSION: 5.4.119-19.0009.67.3.tl2
-  KERNEL_RELEASE: 5.4.119-19.0009.67.3
+  KERNEL_PACKAGE_VERSION: 5.4.119-19.0006.tl2
+  KERNEL_RELEASE: 5.4.119-19-0006
+  VM_ROOT_IMAGE_BYTES: "42949672960"
+  VM_DISK_TOTAL_BYTES: "107374182400"
+  VM_DATA_LABEL: pcdn_index_data
+  VM_DATA_MOUNT: /pcdn_data/pcdn_index_data
 
 jobs:
   build:
-    name: CentOS 7.9.2009 / TKernel 5.4.119-19.0009.67.3 / AMD64 / VM
+    name: CentOS 7.9.2009 / TKernel 5.4.119-19.0006 / AMD64 / VM
     runs-on: ubuntu-24.04
     timeout-minutes: 150
 
@@ -68,6 +73,8 @@ jobs:
               ca-certificates \
               dnsmasq-base \
               dosfstools \
+              e2fsprogs \
+              fdisk \
               gdisk \
               gpg \
               gpg-agent \
@@ -78,6 +85,7 @@ jobs:
               qemu-utils \
               rsync \
               squashfs-tools \
+              util-linux \
               xz-utils \
               zstd
             sudo mkdir -p /etc/apt/keyrings
@@ -193,6 +201,23 @@ jobs:
 
           __main "$@"
 
+      - name: Create 100 GiB disk with PCDN data partition
+        shell: bash
+        run: |
+          __main() {
+            set -euo pipefail
+
+            sudo env \
+              RUNNER_TEMP="${RUNNER_TEMP}" \
+              VM_ROOT_IMAGE_BYTES="${VM_ROOT_IMAGE_BYTES}" \
+              VM_DISK_TOTAL_BYTES="${VM_DISK_TOTAL_BYTES}" \
+              VM_DATA_LABEL="${VM_DATA_LABEL}" \
+              bash scripts/prepare-vm-data-partition.sh \
+                "${OUTPUT_DIR}/vm/disk.qcow2"
+          }
+
+          __main "$@"
+
       - name: Normalize build files
         shell: bash
         run: |
@@ -262,6 +287,11 @@ jobs:
             trap __cleanup EXIT HUP INT TERM
 
             qemu-img check "${OUTPUT_DIR}/vm/disk.qcow2"
+            _disk_virtual_size=$(qemu-img info \
+              --output=json \
+              --force-share \
+              "${OUTPUT_DIR}/vm/disk.qcow2" | jq -r '."virtual-size"')
+            test "${_disk_virtual_size}" = "${VM_DISK_TOTAL_BYTES}"
             sudo incus image import \
               "${OUTPUT_DIR}/vm/incus.tar.xz" \
               "${OUTPUT_DIR}/vm/disk.qcow2" \
@@ -311,10 +341,8 @@ jobs:
             fi
             test "${_guest_kernel}" = "${KERNEL_RELEASE}" || __fail
 
-            for _package in kernel kernel-core kernel-modules; do
-              sudo incus exec "${_test_instance}" -- \
-                rpm -q "${_package}-${KERNEL_PACKAGE_VERSION}.x86_64" || __fail
-            done
+            sudo incus exec "${_test_instance}" -- \
+              rpm -q "kernel-${KERNEL_PACKAGE_VERSION}.x86_64" || __fail
 
             sudo incus exec "${_test_instance}" -- \
               test -f "/boot/vmlinuz-${KERNEL_RELEASE}" || __fail
@@ -325,6 +353,33 @@ jobs:
 
             sudo incus exec "${_test_instance}" -- modinfo virtio_scsi >/dev/null || __fail
             sudo incus exec "${_test_instance}" -- modinfo virtiofs >/dev/null || __fail
+            sudo incus exec "${_test_instance}" -- \
+              env \
+                VM_ROOT_IMAGE_BYTES="${VM_ROOT_IMAGE_BYTES}" \
+                VM_DISK_TOTAL_BYTES="${VM_DISK_TOTAL_BYTES}" \
+                VM_DATA_LABEL="${VM_DATA_LABEL}" \
+                VM_DATA_MOUNT="${VM_DATA_MOUNT}" \
+              sh -c '
+                set -eu
+                _data_source=$(findmnt -n -o SOURCE --target "${VM_DATA_MOUNT}")
+                _root_source=$(findmnt -n -o SOURCE --target /)
+                test -n "${_data_source}"
+                test "${_data_source}" != "${_root_source}"
+                test "$(findmnt -n -o FSTYPE --target "${VM_DATA_MOUNT}")" = ext4
+                test "$(blkid -s LABEL -o value "${_data_source}")" = "${VM_DATA_LABEL}"
+                test "$(blkid -s PARTLABEL -o value "${_data_source}")" = "${VM_DATA_LABEL}"
+                _data_bytes=$(blockdev --getsize64 "${_data_source}")
+                _minimum_data_bytes=$((VM_DISK_TOTAL_BYTES - VM_ROOT_IMAGE_BYTES - 2 * 1024 * 1024))
+                test "${_data_bytes}" -ge "${_minimum_data_bytes}"
+                _parent_name=$(lsblk -n -o PKNAME "${_data_source}" | head -n 1)
+                test -n "${_parent_name}"
+                test "$(blockdev --getsize64 "/dev/${_parent_name}")" = "${VM_DISK_TOTAL_BYTES}"
+                grep -qF "LABEL=${VM_DATA_LABEL} ${VM_DATA_MOUNT} ext4 defaults 0 2" /etc/fstab
+                _test_file="${VM_DATA_MOUNT}/.incus-image-write-test"
+                printf "%s\n" pcdn-data-partition > "${_test_file}"
+                grep -qx pcdn-data-partition "${_test_file}"
+                rm -f "${_test_file}"
+              ' || __fail
             sudo incus exec "${_test_instance}" -- \
               sh -c 'ip -4 -o addr show scope global | grep -q . && ip -4 route show default | grep -q "^default "' \
               || __fail

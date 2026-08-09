@@ -23,7 +23,11 @@ concurrency:
 
 env:
   DEFAULT_IMAGE_TAG: standard-latest
-  KERNEL_RELEASE: 5.4.119-19.0009.67.3
+  KERNEL_RELEASE: 5.4.119-19-0006
+  VM_ROOT_IMAGE_BYTES: "42949672960"
+  VM_DISK_TOTAL_BYTES: "107374182400"
+  VM_DATA_LABEL: pcdn_index_data
+  VM_DATA_MOUNT: /pcdn_data/pcdn_index_data
 
 jobs:
   network:

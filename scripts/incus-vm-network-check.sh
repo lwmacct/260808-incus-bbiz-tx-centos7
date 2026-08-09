@@ -57,6 +57,36 @@ __probe_guest_https() {
       "${_url}"
 }
 
+__check_guest_storage() {
+  sudo incus exec "${TEST_INSTANCE}" -- \
+    env \
+      VM_ROOT_IMAGE_BYTES="${VM_ROOT_IMAGE_BYTES}" \
+      VM_DISK_TOTAL_BYTES="${VM_DISK_TOTAL_BYTES}" \
+      VM_DATA_LABEL="${VM_DATA_LABEL}" \
+      VM_DATA_MOUNT="${VM_DATA_MOUNT}" \
+    sh -c '
+      set -eu
+      _data_source=$(findmnt -n -o SOURCE --target "${VM_DATA_MOUNT}")
+      _root_source=$(findmnt -n -o SOURCE --target /)
+      test -n "${_data_source}"
+      test "${_data_source}" != "${_root_source}"
+      test "$(findmnt -n -o FSTYPE --target "${VM_DATA_MOUNT}")" = ext4
+      test "$(blkid -s LABEL -o value "${_data_source}")" = "${VM_DATA_LABEL}"
+      test "$(blkid -s PARTLABEL -o value "${_data_source}")" = "${VM_DATA_LABEL}"
+      _data_bytes=$(blockdev --getsize64 "${_data_source}")
+      _minimum_data_bytes=$((VM_DISK_TOTAL_BYTES - VM_ROOT_IMAGE_BYTES - 2 * 1024 * 1024))
+      test "${_data_bytes}" -ge "${_minimum_data_bytes}"
+      _parent_name=$(lsblk -n -o PKNAME "${_data_source}" | head -n 1)
+      test -n "${_parent_name}"
+      test "$(blockdev --getsize64 "/dev/${_parent_name}")" = "${VM_DISK_TOTAL_BYTES}"
+      grep -qF "LABEL=${VM_DATA_LABEL} ${VM_DATA_MOUNT} ext4 defaults 0 2" /etc/fstab
+      _test_file="${VM_DATA_MOUNT}/.incus-network-write-test"
+      printf "%s\n" pcdn-data-partition > "${_test_file}"
+      grep -qx pcdn-data-partition "${_test_file}"
+      rm -f "${_test_file}"
+    '
+}
+
 __main() {
   set -euo pipefail
 
@@ -86,6 +116,8 @@ __main() {
     || __fail "Could not read guest kernel"
   test "${_guest_kernel}" = "${KERNEL_RELEASE}" || __fail \
     "Guest kernel ${_guest_kernel} does not match ${KERNEL_RELEASE}"
+  __check_guest_storage || __fail \
+    "Guest PCDN data partition does not match the image contract"
   _guest_cpu_count=$(sudo incus exec "${TEST_INSTANCE}" -- \
     getconf _NPROCESSORS_ONLN) || __fail "Could not read guest CPU count"
   test "${_guest_cpu_count}" = "${VM_CPU_COUNT}" || __fail \
@@ -191,13 +223,15 @@ __main() {
     printf -- '- VM CPUs: %s\n' "${_guest_cpu_count}"
     printf -- '- VM memory: %s (guest %s MiB)\n' \
       "${_configured_memory}" "$((_guest_memory_kib / 1024))"
+    printf -- '- PCDN data mount: %s (approximately 60 GiB)\n' \
+      "${VM_DATA_MOUNT}"
     printf -- '- Guest IPv4: %s\n' "${_guest_ipv4_cidr}"
     printf -- '- Default gateway: %s\n' "${_guest_gateway}"
     printf -- '- Tencent HTTPS (guest): %s (%s)\n' \
       "${_tencent_guest_ok}" "${_tencent_result}"
     printf -- '- CentOS 7 mainland mirror HTTPS (guest): %s\n' \
       "${_centos_guest_ok}"
-    echo 'Kernel, resources, DHCP, default route, bidirectional ICMP, DNS and control HTTPS: passed'
+    echo 'Kernel, storage, resources, DHCP, default route, bidirectional ICMP, DNS and control HTTPS: passed'
   } >> "${GITHUB_STEP_SUMMARY}"
 }
 
