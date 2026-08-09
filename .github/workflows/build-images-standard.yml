@@ -351,7 +351,11 @@ jobs:
             fi
             test "${_default_kernel}" = "/boot/vmlinuz-${KERNEL_RELEASE}" || __fail
 
-            sudo incus exec "${_test_instance}" -- modinfo virtio_scsi >/dev/null || __fail
+            sudo incus exec "${_test_instance}" -- \
+              grep -qx 'kernel/drivers/scsi/virtio_scsi.ko' \
+                "/lib/modules/${KERNEL_RELEASE}/modules.builtin" || __fail
+            sudo incus exec "${_test_instance}" -- \
+              test -d /sys/module/virtio_scsi || __fail
             sudo incus exec "${_test_instance}" -- modinfo virtiofs >/dev/null || __fail
             sudo incus exec "${_test_instance}" -- \
               env \
