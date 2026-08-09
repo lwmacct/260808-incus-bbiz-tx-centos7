@@ -1,6 +1,7 @@
-# CentOS 7 Tencent Linux kernel Incus VM image
+# CentOS 7 + Tencent Linux 内核 Incus VM 镜像
 
-本仓库使用 `distrobuilder` 构建并启动验证一个固定范围的 Incus VM 镜像：
+本仓库使用 `distrobuilder` 构建 CentOS 7 Incus VM 镜像，并通过 GitHub Actions
+验证启动、固定内核、独立数据分区和网络连通性。镜像范围如下：
 
 - 系统：CentOS Linux `7.9.2009`
 - 架构：`amd64`（内核和 distrobuilder 使用 `x86_64`）
