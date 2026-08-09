@@ -65,6 +65,7 @@ __main() {
   _network_expected_gateway=${NETWORK_EXPECTED_GATEWAY:-}
   _network_label=${NETWORK_LABEL:-Incus network}
   _require_tencent=${REQUIRE_TENCENT:-true}
+  _require_centos_mirror=${REQUIRE_CENTOS_MIRROR:-true}
 
   _ready=false
   set +e
@@ -151,7 +152,7 @@ __main() {
   test -n "${_dns_tencent}" || __fail \
     "mirrors.cloud.tencent.com returned no IPv4 addresses"
   _tencent_url=https://mirrors.cloud.tencent.com/tlinux/2.4/tlinux-tkernel4/x86_64/repodata/repomd.xml
-  _centos_url=https://mirrors.cloud.tencent.com/centos-vault/7.9.2009/os/x86_64/repodata/repomd.xml
+  _centos_url=${CENTOS_MIRROR_URL:-https://mirrors.cloud.tencent.com/centos-vault/7.9.2009/os/x86_64/repodata/repomd.xml}
   _tencent_runner_ok=false
   _tencent_guest_ok=false
   _centos_runner_ok=false
@@ -168,8 +169,12 @@ __main() {
   if __probe_guest_https "${_centos_url}"; then
     _centos_guest_ok=true
   fi
-  test "${_centos_guest_ok}" = true || __fail \
-    "Guest cannot reach the CentOS 7 mainland mirror HTTPS endpoint"
+  if [ "${_centos_guest_ok}" != true ]; then
+    if [ "${_require_centos_mirror}" = true ]; then
+      __fail "Guest cannot reach the CentOS 7 mainland mirror HTTPS endpoint"
+    fi
+    echo "::warning title=CentOS mirror external reachability::The CentOS 7 mainland mirror is unreachable from the guest"
+  fi
   _tencent_result=passed
   if [ "${_tencent_guest_ok}" != true ]; then
     if [ "${_tencent_runner_ok}" = true ] || [ "${_require_tencent}" = true ]; then

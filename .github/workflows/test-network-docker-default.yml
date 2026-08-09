@@ -118,6 +118,8 @@ jobs:
             export NETWORK_PARENT="${DOCKER_BRIDGE}"
             export DHCP_LEASE_FILE="${_dhcp_lease_file}"
             export REQUIRE_TENCENT=true
+            # GitHub-hosted runners cannot reliably reach mainland mirrors.
+            export REQUIRE_CENTOS_MIRROR=false
             bash scripts/incus-vm-network-check.sh
             sudo cat "${_dhcp_lease_file}"
             sudo incus stop --force "${_test_instance}"

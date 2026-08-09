@@ -51,6 +51,8 @@ jobs:
         env:
           NETWORK_LABEL: Incus managed bridge
           REQUIRE_TENCENT: "false"
+          # GitHub-hosted runners cannot reliably reach mainland mirrors.
+          REQUIRE_CENTOS_MIRROR: "false"
         run: |
           __cleanup() {
             sudo incus delete --force "${_test_instance}" 2>/dev/null || true

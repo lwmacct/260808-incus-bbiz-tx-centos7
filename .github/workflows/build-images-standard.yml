@@ -332,7 +332,7 @@ jobs:
               sh -c 'test "$(find /etc/yum.repos.d -maxdepth 1 -type f -name "*.repo" -printf "%f\n")" = CentOS-Base.repo' \
               || __fail
             sudo incus exec "${_test_instance}" -- \
-              yum --disablerepo='*' --enablerepo=base info virt-what \
+              sh -c 'grep -Fq "mirrors.cloud.tencent.com/centos-vault/7.9.2009" /etc/yum.repos.d/CentOS-Base.repo && ! grep -Fq "vault.centos.org" /etc/yum.repos.d/CentOS-Base.repo' \
               || __fail
 
             sudo incus stop --force "${_test_instance}"
