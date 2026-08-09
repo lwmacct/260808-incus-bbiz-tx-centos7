@@ -1,6 +1,6 @@
 # 镜像构建与发布
 
-本仓库通过 [Build Incus VM image](../.github/workflows/build-incus-vm.yml)
+本仓库通过 [Build Incus VM image](../.github/workflows/build-images-standard.yml)
 workflow 构建、启动验证并发布 CentOS 7.9.2009 AMD64 Incus VM 镜像。成品内核
 固定为 Tencent Linux `5.4.119-19.0009.67.3`。
 
@@ -11,14 +11,13 @@ workflow 构建、启动验证并发布 CentOS 7.9.2009 AMD64 Incus VM 镜像。
 | 方式 | 条件 |
 | --- | --- |
 | Push | 向 `main` 推送 `images/standard.yaml` 或 workflow 修改 |
-| Schedule | 每周一 `03:17 UTC`，即北京时间每周一 `11:17` |
 | Manual | 在 Actions 页面运行 workflow，或使用 GitHub CLI |
 
 手动触发并等待结果：
 
 ```bash
-gh workflow run build-incus-vm.yml --ref main
-gh run list --workflow build-incus-vm.yml --limit 10
+gh workflow run build-images-standard.yml --ref main
+gh run list --workflow build-images-standard.yml --limit 10
 gh run watch <run-id> --exit-status
 ```
 
@@ -32,8 +31,8 @@ CentOS Linux 7.9.2009 / tkernel 5.4.119-19.0009.67.3 / amd64 / default / VM
 
 1. 在 GitHub `ubuntu-24.04` AMD64 runner 上配置 Zabbly Incus stable，安装 Incus、QEMU、OVMF 和构建依赖。
 2. 编译并缓存固定版本的 `distrobuilder v3.3.1`。
-3. 验证 `images/standard.yaml`，从 CentOS Vault 下载并校验 Minimal ISO。
-4. 使用 `distrobuilder build-incus --vm --type=split` 构建镜像；构建动作从腾讯镜像下载固定的 `kernel`、`kernel-core` 和 `kernel-modules` RPM。
+3. 验证 `images/standard.yaml`，从官方 CentOS Vault 下载并校验 Minimal ISO。
+4. 使用 `distrobuilder build-incus --vm --type=split` 构建镜像；构建期间所有 CentOS 包使用官方 Vault，构建动作从腾讯镜像下载固定的 `kernel`、`kernel-core` 和 `kernel-modules` RPM；最后的 `post-files` 阶段才把成品 yum 切换到中国大陆镜像池。
 5. 校验三个 RPM 的固定 SHA-256，并使用内嵌 Tlinux 公钥验证 RSA/SHA256 签名。
 6. 安装内核，显式运行 `depmod`、`dracut` 和 grub 配置，并把该版本设为默认内核。
 7. 输出 Incus 元数据和 qcow2 磁盘文件。
@@ -61,7 +60,7 @@ qcow2 完整性，然后导入 Incus。默认测试 `standard-latest`；复现�
 2. VM 中在线 CPU 数和内存容量符合动态资源分配。
 3. VM 通过 DHCP 获得全局 IPv4 地址和默认路由。
 4. VM 可以访问桥接网关，runner 宿主也可以访问 VM IPv4。
-5. VM 可以通过 DNS 解析腾讯镜像和 CentOS Vault。
+5. VM 可以通过 DNS 解析腾讯镜像和 CentOS 7 大陆 Vault 镜像。
 6. VM 可以通过 IPv4 HTTPS 下载两个仓库的 `repomd.xml`。
 
 ### Docker 默认 bridge 对照实验
@@ -133,7 +132,10 @@ CentOS 7 的旧 shim 和该内核不纳入当前 Secure Boot 信任链，因此�
 
 CentOS 镜像定义派生自 `lxc/lxc-ci` commit
 [`5826c344bfac81dbdef0d54f56ef90d907bd2591`](https://github.com/lxc/lxc-ci/commit/5826c344bfac81dbdef0d54f56ef90d907bd2591)，
-并固定到 CentOS Vault `7.9.2009`。
+并固定到 CentOS Vault `7.9.2009`。构建期间使用官方 Vault，成品的 yum 配置使用
+中国大陆镜像池；调查和
+`distrobuilder v3.3.1` 对构建 ISO 源的限制见
+[`centos7-mirrors-cn.md`](centos7-mirrors-cn.md)。
 
 腾讯 RPM 元数据声明的对应源码包是
 `kernel-5.4.119-19.0009.67.3.tl2.src.rpm`，但腾讯镜像当前没有提供该文件。

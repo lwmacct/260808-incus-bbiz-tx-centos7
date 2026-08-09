@@ -9,14 +9,25 @@
 - 产物：`incus.tar.xz`、`disk.qcow2`、`SHA256SUMS`
 
 镜像定义位于 [`images/standard.yaml`](images/standard.yaml)。构建、启动测试和
-GHCR 发布由 [Build Incus VM image](.github/workflows/build-incus-vm.yml)
+GHCR 发布由 [Build Incus VM image](.github/workflows/build-images-standard.yml)
 workflow 完成。发布后的独立网络验证由
 [Test VM network on Incus managed bridge](.github/workflows/test-network-incus-managed.yml)
 workflow 完成；复用 Docker 默认 bridge 和 NAT 的对照实验由
 [Test VM network on Docker default bridge](.github/workflows/test-network-docker-default.yml)
 workflow 完成。
 
-网络设计、DHCP 限制和故障排查经验见 [`docs/network.md`](docs/network.md)。
+网络设计、DHCP 限制和故障排查经验见 [`docs/network.md`](docs/network.md)。中国大陆
+CentOS 7 Vault 镜像的实测结果、取舍和构建限制见
+[`docs/centos7-mirrors-cn.md`](docs/centos7-mirrors-cn.md)。
+
+## 中国大陆 yum 源
+
+成品镜像将 CentOS 7.9.2009 的 `base`、`updates`、`extras` 固定到中国大陆
+Vault 镜像池，按腾讯云、阿里云、华为云、南京大学和哈尔滨工业大学排列。所有
+地址使用 HTTPS，RPM 继续使用 CentOS 官方密钥验证；任一镜像不可用时 yum 可以
+尝试后续地址。构建时下载 Minimal ISO 仍受 `distrobuilder v3.3.1` 限制而使用
+官方 `vault.centos.org`；构建期间的包安装也使用官方 Vault，只有镜像定制完成前
+的最后 `post-files` 阶段才切换成品运行时 yum 到大陆源。
 
 ## 固定内核
 
@@ -41,7 +52,8 @@ Incus agent 和网络。
 
 独立网络 workflow 会把 runner 的全部可用 CPU 分配给 VM，并把总内存减去
 `4 GiB` 后全部设置为 VM 内存上限。它验证 DHCP、默认路由、VM 与宿主的桥接
-连通性、DNS，以及 VM 到腾讯镜像和 CentOS Vault 的 IPv4 HTTPS。
+连通性、DNS，以及 VM 到腾讯 Tlinux 镜像和 CentOS 7 大陆 Vault 镜像的 IPv4
+HTTPS。
 
 Docker bridge 对照 workflow 仅手动触发。它将 VM 网卡直接桥接到 `docker0`。
 由于 Docker 默认网络不提供 DHCP，它在 `docker0` 上启动仅提供 DHCP 的

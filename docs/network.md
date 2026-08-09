@@ -98,7 +98,7 @@ iptables/nftables、Incus 日志和 guest console：
 3. DHCP 在 2 分钟内提供全局 IPv4 地址；
 4. guest 有默认路由，且 guest 能 ping 网关；
 5. runner 能反向 ping guest，确认不是单向出站；
-6. guest 能解析 Tencent mirror 和 CentOS Vault 的 IPv4 地址；
+6. guest 能解析 Tencent mirror 和 CentOS 7 大陆 Vault 镜像的 IPv4 地址；
 7. runner 和 guest 都能访问两个仓库的 HTTPS `repomd.xml`。
 
 逐层检查比只执行 `curl` 更容易定位问题：没有地址是 DHCP 问题，没有默认路由是

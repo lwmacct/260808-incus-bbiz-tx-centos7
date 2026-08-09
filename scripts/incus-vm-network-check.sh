@@ -150,33 +150,26 @@ __main() {
   fi
   test -n "${_dns_tencent}" || __fail \
     "mirrors.cloud.tencent.com returned no IPv4 addresses"
-  if ! _dns_centos=$(sudo incus exec "${TEST_INSTANCE}" -- \
-    getent ahostsv4 vault.centos.org); then
-    __fail "Guest cannot resolve vault.centos.org over IPv4"
-  fi
-  test -n "${_dns_centos}" || __fail \
-    "vault.centos.org returned no IPv4 addresses"
-
   _tencent_url=https://mirrors.cloud.tencent.com/tlinux/2.4/tlinux-tkernel4/x86_64/repodata/repomd.xml
-  _vault_url=https://vault.centos.org/7.9.2009/os/x86_64/repodata/repomd.xml
+  _centos_url=https://mirrors.cloud.tencent.com/centos-vault/7.9.2009/os/x86_64/repodata/repomd.xml
   _tencent_runner_ok=false
   _tencent_guest_ok=false
-  _vault_runner_ok=false
-  _vault_guest_ok=false
+  _centos_runner_ok=false
+  _centos_guest_ok=false
   if __probe_runner_https "${_tencent_url}"; then
     _tencent_runner_ok=true
   fi
   if __probe_guest_https "${_tencent_url}"; then
     _tencent_guest_ok=true
   fi
-  if __probe_runner_https "${_vault_url}"; then
-    _vault_runner_ok=true
+  if __probe_runner_https "${_centos_url}"; then
+    _centos_runner_ok=true
   fi
-  if __probe_guest_https "${_vault_url}"; then
-    _vault_guest_ok=true
+  if __probe_guest_https "${_centos_url}"; then
+    _centos_guest_ok=true
   fi
-  test "${_vault_guest_ok}" = true || __fail \
-    "Guest cannot reach the CentOS Vault HTTPS control endpoint"
+  test "${_centos_guest_ok}" = true || __fail \
+    "Guest cannot reach the CentOS 7 mainland mirror HTTPS endpoint"
   _tencent_result=passed
   if [ "${_tencent_guest_ok}" != true ]; then
     if [ "${_tencent_runner_ok}" = true ] || [ "${_require_tencent}" = true ]; then
@@ -197,7 +190,8 @@ __main() {
     printf -- '- Default gateway: %s\n' "${_guest_gateway}"
     printf -- '- Tencent HTTPS (guest): %s (%s)\n' \
       "${_tencent_guest_ok}" "${_tencent_result}"
-    printf -- '- CentOS Vault HTTPS (guest): %s\n' "${_vault_guest_ok}"
+    printf -- '- CentOS 7 mainland mirror HTTPS (guest): %s\n' \
+      "${_centos_guest_ok}"
     echo 'Kernel, resources, DHCP, default route, bidirectional ICMP, DNS and control HTTPS: passed'
   } >> "${GITHUB_STEP_SUMMARY}"
 }

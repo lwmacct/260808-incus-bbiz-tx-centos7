@@ -6,6 +6,9 @@ image:
 
 source:
   downloader: centos-http
+  # distrobuilder v3.3.1 only permits three-part CentOS releases when this
+  # URL contains vault.centos.org. Runtime yum repositories are configured
+  # separately below for mainland China.
   url: https://vault.centos.org/
   variant: minimal
   keys:
@@ -230,8 +233,8 @@ actions:
 
       touch /etc/hosts /etc/hostname
 
-      # CentOS 7 is archived. Keep build and runtime repositories explicit.
-      rm -f /etc/yum.repos.d/*.repo
+      # Keep the build on the official Vault. The final image switches to the
+      # mainland mirror pool in the post-files action below.
       cat > /etc/yum.repos.d/CentOS-Base.repo <<'EOF'
     [base]
     name=CentOS 7.9.2009 - Base
@@ -361,6 +364,50 @@ actions:
       trap - EXIT HUP INT TERM
     }
 
+    __configure_runtime_repositories() {
+      mkdir -p /etc/yum.repos.d/disabled
+      find /etc/yum.repos.d -maxdepth 1 -type f -name '*.repo' \
+        -exec mv -t /etc/yum.repos.d/disabled -- {} +
+      cat > /etc/yum.repos.d/CentOS-Base.repo <<'EOF'
+    [base]
+    name=CentOS 7.9.2009 - Base - Mainland China
+    baseurl=https://mirrors.cloud.tencent.com/centos-vault/7.9.2009/os/$basearch/
+            https://mirrors.aliyun.com/centos-vault/7.9.2009/os/$basearch/
+            https://mirrors.huaweicloud.com/centos-vault/7.9.2009/os/$basearch/
+            https://mirrors.nju.edu.cn/centos-vault/7.9.2009/os/$basearch/
+            https://mirrors.hit.edu.cn/centos-vault/7.9.2009/os/$basearch/
+    enabled=1
+    gpgcheck=1
+    gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
+    failovermethod=priority
+
+    [updates]
+    name=CentOS 7.9.2009 - Updates - Mainland China
+    baseurl=https://mirrors.cloud.tencent.com/centos-vault/7.9.2009/updates/$basearch/
+            https://mirrors.aliyun.com/centos-vault/7.9.2009/updates/$basearch/
+            https://mirrors.huaweicloud.com/centos-vault/7.9.2009/updates/$basearch/
+            https://mirrors.nju.edu.cn/centos-vault/7.9.2009/updates/$basearch/
+            https://mirrors.hit.edu.cn/centos-vault/7.9.2009/updates/$basearch/
+    enabled=1
+    gpgcheck=1
+    gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
+    failovermethod=priority
+
+    [extras]
+    name=CentOS 7.9.2009 - Extras - Mainland China
+    baseurl=https://mirrors.cloud.tencent.com/centos-vault/7.9.2009/extras/$basearch/
+            https://mirrors.aliyun.com/centos-vault/7.9.2009/extras/$basearch/
+            https://mirrors.huaweicloud.com/centos-vault/7.9.2009/extras/$basearch/
+            https://mirrors.nju.edu.cn/centos-vault/7.9.2009/extras/$basearch/
+            https://mirrors.hit.edu.cn/centos-vault/7.9.2009/extras/$basearch/
+    enabled=1
+    gpgcheck=1
+    gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
+    failovermethod=priority
+    EOF
+      yum clean all
+    }
+
     __main() {
       set -eux
 
@@ -368,6 +415,7 @@ actions:
       __prepare_machine_id
       __install_tlinux_kernel
       __configure_boot
+      __configure_runtime_repositories
       __reset_machine_id
 
       systemctl enable NetworkManager.service
