@@ -65,7 +65,7 @@ __check_guest_storage() {
       VM_DATA_LABEL="${VM_DATA_LABEL}" \
       VM_DATA_MOUNT="${VM_DATA_MOUNT}" \
     sh -c '
-      set -eu
+      set -eux
       _data_source=$(findmnt -n -o SOURCE --target "${VM_DATA_MOUNT}")
       _root_source=$(findmnt -n -o SOURCE --target /)
       test -n "${_data_source}"

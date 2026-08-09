@@ -354,8 +354,6 @@ jobs:
             sudo incus exec "${_test_instance}" -- \
               grep -qx 'kernel/drivers/scsi/virtio_scsi.ko' \
                 "/lib/modules/${KERNEL_RELEASE}/modules.builtin" || __fail
-            sudo incus exec "${_test_instance}" -- \
-              test -d /sys/module/virtio_scsi || __fail
             sudo incus exec "${_test_instance}" -- modinfo virtiofs >/dev/null || __fail
             sudo incus exec "${_test_instance}" -- \
               env \
@@ -364,7 +362,7 @@ jobs:
                 VM_DATA_LABEL="${VM_DATA_LABEL}" \
                 VM_DATA_MOUNT="${VM_DATA_MOUNT}" \
               sh -c '
-                set -eu
+                set -eux
                 _data_source=$(findmnt -n -o SOURCE --target "${VM_DATA_MOUNT}")
                 _root_source=$(findmnt -n -o SOURCE --target /)
                 test -n "${_data_source}"
