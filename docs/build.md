@@ -35,7 +35,7 @@ CentOS Linux 7.9.2009 / tkernel 5.4.119-19-0006 / amd64 / default / VM
 4. 使用 `distrobuilder build-incus --vm --type=split` 构建初始 `40 GiB` 镜像；构建期间所有 CentOS 包使用官方 Vault，构建动作从腾讯镜像下载固定的单体 `kernel` RPM；最后的 `post-files` 阶段才把成品 yum 切换到中国大陆镜像池。
 5. 校验 RPM 的固定 SHA-256，并使用内嵌 Tlinux 公钥验证 RSA/SHA256 签名。
 6. 安装内核，显式运行 `depmod`、`dracut` 和 grub 配置，并把该版本设为默认内核。
-7. 输出 Incus 元数据和 qcow2 磁盘文件，再把磁盘扩展到 `100 GiB`，在尾部创建并格式化约 `60 GiB` 的 XFS `pcdn_index_data` 分区。
+7. 输出 Incus 元数据和 qcow2 磁盘文件，再把磁盘重排并扩展到 `100 GiB`：第 2 分区为固定 `60 GiB` XFS `pcdn_index_data`，根分区迁移到末尾的第 3 分区。
 8. 对 `disk.qcow2` 执行完整性和虚拟容量检查，将镜像导入 Incus，挂载 agent 配置光盘并关闭 Secure Boot 启动。
 9. 验证系统身份、架构、RPM、`uname -r`、默认 grub 内核、virtio 模块、数据分区、Incus agent 和 IPv4 网络。
 10. 生成 `SHA256SUMS`，通过 ORAS 发布到 GHCR。
@@ -58,7 +58,7 @@ Incus/QEMU 管理进程保留 `4 GiB`。
 网络实验依次验证：
 
 1. Incus agent 和固定内核可以正常启动。
-2. 总磁盘为 `100 GiB`，数据分区独立挂载、容量约 `60 GiB` 且可以读写。
+2. 总磁盘为 `100 GiB`，数据分区独立挂载、容量固定为 `60 GiB` 且可以读写。
 3. VM 中在线 CPU 数和内存容量符合动态资源分配。
 4. VM 通过 DHCP 获得全局 IPv4 地址和默认路由。
 5. VM 可以访问桥接网关，runner 宿主也可以访问 VM IPv4。
@@ -130,13 +130,15 @@ RPM 的 release 使用点号 `19.0006`，但包内内核 release 和 `uname -r` 
 `distrobuilder v3.3.1` 只能创建 EFI 和单一根分区，因此镜像定义先生成 `40 GiB`
 磁盘。构建 workflow 随后通过
 [`prepare-vm-data-partition.sh`](../scripts/prepare-vm-data-partition.sh) 将 qcow2 转为
-稀疏 raw、扩展到 `100 GiB`、修复 GPT 备用表位置并创建第三分区，最后重新压缩为
-qcow2。
+稀疏 raw、扩展到 `100 GiB` 并重排分区：保留第 1 个 EFI 分区，将原第 2 个根
+分区的内容和 GPT 标识迁移到磁盘末尾的第 3 分区，再重新压缩为 qcow2。
 
-第三分区使用全部尾部空间，格式化为 XFS，GPT 分区标签为 `pcdn_index_data`，
+第 2 分区固定为 `60 GiB`，格式化为 XFS，GPT 分区标签为 `pcdn_index_data`，
 XFS 文件系统标签为 `pcdn_data`，并通过 `PARTLABEL=pcdn_index_data` 挂载到
-`/pcdn_data/pcdn_index_data`。XFS 文件系统标签最多 12 个字符；扩大实例根盘只会
-增加磁盘尾部未分配空间，不会自动扩大该分区。
+`/pcdn_data/pcdn_index_data`。XFS 文件系统标签最多 12 个字符；格式化参数明确
+关闭 Linux 5.4 不支持的 `inobtcount`、`bigtime` 和 `nrext64` 等新版特性。
+根分区位于磁盘末尾，因此扩盘产生的空间与第 3 分区相邻，可继续扩展根分区和根
+文件系统，但镜像不会自动执行扩容。
 
 ## Incus 兼容性
 

@@ -7,7 +7,7 @@
 - 架构：`amd64`（内核和 distrobuilder 使用 `x86_64`）
 - 内核 RPM：Tencent Linux `5.4.119-19.0006.tl2`
 - 运行内核：`5.4.119-19-0006`
-- 默认磁盘：`100 GiB`，其中约 `60 GiB` 独立挂载到 `/pcdn_data/pcdn_index_data`
+- 默认磁盘：`100 GiB`，其中固定 `60 GiB` 独立挂载到 `/pcdn_data/pcdn_index_data`
 - 类型：仅 VM
 - 产物：`incus.tar.xz`、`disk.qcow2`、`SHA256SUMS`
 
@@ -53,16 +53,18 @@ VM 启动后，workflow 会精确验证 `uname -r` 为
 
 ## 默认磁盘布局
 
-成品 `disk.qcow2` 的虚拟容量固定为 `100 GiB`，包含 `100 MiB` EFI 分区、约
-`39.9 GiB` 根分区，以及使用剩余空间创建的约 `60 GiB` XFS 数据分区。数据
+成品 `disk.qcow2` 的虚拟容量固定为 `100 GiB`。第 1 分区为 `100 MiB` EFI，
+第 2 分区为固定 `60 GiB` XFS 数据分区，第 3 分区为约 `39.9 GiB` 根分区。数据
 分区的 GPT 分区标签为 `pcdn_index_data`，XFS 文件系统标签为 `pcdn_data`，通过
 `PARTLABEL=pcdn_index_data` 写入 `/etc/fstab`，挂载到
 `/pcdn_data/pcdn_index_data`。XFS 标签最多 12 个字符，因此不能直接使用完整
-的 15 字符分区标签作为文件系统标签。
+的 15 字符分区标签作为文件系统标签；格式化时关闭 Linux 5.4 不支持的新版 XFS
+特性。
 
 该虚拟容量也是 Incus 创建实例时的最小根盘容量；显式配置小于 `100 GiB` 的
-实例或存储池 volume size 会被拒绝。把实例根盘扩大到 `100 GiB` 以上不会自动
-扩展数据分区，新增空间需要另行分配。
+实例或存储池 volume size 会被拒绝。根分区位于磁盘末尾，因此把实例根盘扩大到
+`100 GiB` 以上后，新增空间与第 3 分区相邻，可用于扩展根分区和根文件系统；镜像
+不会自动执行扩容。
 
 独立网络 workflow 会把 runner 的全部可用 CPU 分配给 VM，并把总内存减去
 `4 GiB` 后全部设置为 VM 内存上限。它验证 DHCP、默认路由、VM 与宿主的桥接

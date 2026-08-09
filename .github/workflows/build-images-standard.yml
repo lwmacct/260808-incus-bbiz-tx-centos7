@@ -204,7 +204,7 @@ jobs:
 
           __main "$@"
 
-      - name: Create 100 GiB disk with PCDN data partition
+      - name: Create 100 GiB disk with PCDN data on partition 2
         shell: bash
         run: |
           __main() {
@@ -373,12 +373,18 @@ jobs:
                 _root_source=$(findmnt -n -o SOURCE --target /)
                 test -n "${_data_source}"
                 test "${_data_source}" != "${_root_source}"
+                _data_device=$(readlink -f "${_data_source}")
+                _root_device=$(readlink -f "${_root_source}")
+                _data_device_name=${_data_device##*/}
+                _root_device_name=${_root_device##*/}
+                test "$(cat "/sys/class/block/${_data_device_name}/partition")" = 2
+                test "$(cat "/sys/class/block/${_root_device_name}/partition")" = 3
                 test "$(findmnt -n -o FSTYPE --target "${VM_DATA_MOUNT}")" = "${VM_DATA_FSTYPE}"
                 test "$(blkid -s LABEL -o value "${_data_source}")" = "${VM_DATA_FS_LABEL}"
                 test "$(blkid -s PARTLABEL -o value "${_data_source}")" = "${VM_DATA_LABEL}"
                 _data_bytes=$(blockdev --getsize64 "${_data_source}")
-                _minimum_data_bytes=$((VM_DISK_TOTAL_BYTES - VM_ROOT_IMAGE_BYTES - 2 * 1024 * 1024))
-                test "${_data_bytes}" -ge "${_minimum_data_bytes}"
+                _expected_data_bytes=$((VM_DISK_TOTAL_BYTES - VM_ROOT_IMAGE_BYTES))
+                test "${_data_bytes}" = "${_expected_data_bytes}"
                 _parent_name=$(lsblk -n -o PKNAME "${_data_source}" | head -n 1)
                 test -n "${_parent_name}"
                 test "$(blockdev --getsize64 "/dev/${_parent_name}")" = "${VM_DISK_TOTAL_BYTES}"
