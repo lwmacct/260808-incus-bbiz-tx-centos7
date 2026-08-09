@@ -23,10 +23,10 @@ workflow 完成。
 镜像不会启用 TencentOS 软件源，也不会安装会改变系统身份的 `tlinux-release`。
 构建期间只下载以下三个固定 RPM，并同时验证 SHA-256 和 Tlinux RPM 签名：
 
-| RPM | SHA-256 |
-| --- | --- |
-| `kernel-5.4.119-19.0009.67.3.tl2.x86_64.rpm` | `5faa0b0ac3fd74ba3d8357cb3a9a0358c1f2282d2a87288c3faf4b6a43c18581` |
-| `kernel-core-5.4.119-19.0009.67.3.tl2.x86_64.rpm` | `5b551268d8de1ae3c6dd0f956131b49ac6a5e968516af0b688095dd1545bc78d` |
+| RPM                                                  | SHA-256                                                            |
+| ---------------------------------------------------- | ------------------------------------------------------------------ |
+| `kernel-5.4.119-19.0009.67.3.tl2.x86_64.rpm`         | `5faa0b0ac3fd74ba3d8357cb3a9a0358c1f2282d2a87288c3faf4b6a43c18581` |
+| `kernel-core-5.4.119-19.0009.67.3.tl2.x86_64.rpm`    | `5b551268d8de1ae3c6dd0f956131b49ac6a5e968516af0b688095dd1545bc78d` |
 | `kernel-modules-5.4.119-19.0009.67.3.tl2.x86_64.rpm` | `18230ae693aa8e6e99e44ae0812fb8704d3cb4401cce0d4e27982841bf721c24` |
 
 Tlinux 签名密钥指纹：
@@ -82,8 +82,7 @@ sudo incus image import \
 该内核没有 9p，启动 VM 时必须挂载 Incus agent 配置光盘，同时关闭 Secure Boot：
 
 ```bash
-sudo incus init centos-7-tkernel-vm centos7-tkernel \
-  --vm \
+sudo incus init centos-7-tkernel-vm centos7-tkernel --vm \
   -c security.secureboot=false
 sudo incus config device add centos7-tkernel agent disk source=agent:config
 sudo incus start centos7-tkernel
