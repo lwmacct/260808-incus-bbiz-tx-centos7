@@ -219,6 +219,7 @@ packages:
     - irqbalance
     - grub2-efi-x64
     - grubby
+    - xfsprogs
     action: install
     types:
     - vm
@@ -298,9 +299,9 @@ actions:
 
     __configure_pcdn_data_mount() {
       install -d -m 0755 /pcdn_data/pcdn_index_data
-      grep -qF 'LABEL=pcdn_index_data /pcdn_data/pcdn_index_data ' /etc/fstab \
+      grep -qF 'PARTLABEL=pcdn_index_data /pcdn_data/pcdn_index_data ' /etc/fstab \
         || printf '%s\n' \
-          'LABEL=pcdn_index_data /pcdn_data/pcdn_index_data ext4 defaults 0 2' \
+          'PARTLABEL=pcdn_index_data /pcdn_data/pcdn_index_data xfs defaults 0 2' \
           >> /etc/fstab
     }
 

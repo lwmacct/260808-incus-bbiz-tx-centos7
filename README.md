@@ -54,9 +54,11 @@ VM 启动后，workflow 会精确验证 `uname -r` 为
 ## 默认磁盘布局
 
 成品 `disk.qcow2` 的虚拟容量固定为 `100 GiB`，包含 `100 MiB` EFI 分区、约
-`39.9 GiB` 根分区，以及使用剩余空间创建的约 `60 GiB` ext4 数据分区。数据
-分区的文件系统标签和 GPT 分区标签均为 `pcdn_index_data`，通过 `/etc/fstab`
-挂载到 `/pcdn_data/pcdn_index_data`。
+`39.9 GiB` 根分区，以及使用剩余空间创建的约 `60 GiB` XFS 数据分区。数据
+分区的 GPT 分区标签为 `pcdn_index_data`，XFS 文件系统标签为 `pcdn_data`，通过
+`PARTLABEL=pcdn_index_data` 写入 `/etc/fstab`，挂载到
+`/pcdn_data/pcdn_index_data`。XFS 标签最多 12 个字符，因此不能直接使用完整
+的 15 字符分区标签作为文件系统标签。
 
 该虚拟容量也是 Incus 创建实例时的最小根盘容量；显式配置小于 `100 GiB` 的
 实例或存储池 volume size 会被拒绝。把实例根盘扩大到 `100 GiB` 以上不会自动
@@ -82,6 +84,16 @@ CentOS 版本和内核版本由仓库配置固定，不再重复编码到 GHCR �
 ```text
 artifact-standard-latest
 artifact-standard-sha-<git-commit-id-12>
+artifact-standard-stable
+```
+
+`artifact-standard-stable` 不会随每次构建自动移动。通过
+[Publish stable GHCR tag](.github/workflows/publish-stable.yml) 手动指定一个不可变
+的 `artifact-standard-sha-*` 标签后，才会将它提升为 stable。
+
+```bash
+gh workflow run publish-stable.yml --ref main \
+  -f source_tag=artifact-standard-sha-<git-commit-id-12>
 ```
 
 发布地址：

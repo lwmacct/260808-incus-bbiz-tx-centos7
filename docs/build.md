@@ -35,7 +35,7 @@ CentOS Linux 7.9.2009 / tkernel 5.4.119-19-0006 / amd64 / default / VM
 4. 使用 `distrobuilder build-incus --vm --type=split` 构建初始 `40 GiB` 镜像；构建期间所有 CentOS 包使用官方 Vault，构建动作从腾讯镜像下载固定的单体 `kernel` RPM；最后的 `post-files` 阶段才把成品 yum 切换到中国大陆镜像池。
 5. 校验 RPM 的固定 SHA-256，并使用内嵌 Tlinux 公钥验证 RSA/SHA256 签名。
 6. 安装内核，显式运行 `depmod`、`dracut` 和 grub 配置，并把该版本设为默认内核。
-7. 输出 Incus 元数据和 qcow2 磁盘文件，再把磁盘扩展到 `100 GiB`，在尾部创建并格式化约 `60 GiB` 的 `pcdn_index_data` 分区。
+7. 输出 Incus 元数据和 qcow2 磁盘文件，再把磁盘扩展到 `100 GiB`，在尾部创建并格式化约 `60 GiB` 的 XFS `pcdn_index_data` 分区。
 8. 对 `disk.qcow2` 执行完整性和虚拟容量检查，将镜像导入 Incus，挂载 agent 配置光盘并关闭 Secure Boot 启动。
 9. 验证系统身份、架构、RPM、`uname -r`、默认 grub 内核、virtio 模块、数据分区、Incus agent 和 IPv4 网络。
 10. 生成 `SHA256SUMS`，通过 ORAS 发布到 GHCR。
@@ -88,6 +88,17 @@ disk.qcow2
 SHA256SUMS
 ```
 
+## Stable 标签发布
+
+[Publish stable GHCR tag](../.github/workflows/publish-stable.yml) 只允许手动触发。
+它从指定的不可变 `artifact-standard-sha-<git-commit-id-12>` 标签提升并覆盖
+`artifact-standard-stable`，然后校验两个标签指向相同 digest：
+
+```bash
+gh workflow run publish-stable.yml --ref main \
+  -f source_tag=artifact-standard-sha-<git-commit-id-12>
+```
+
 ## 内核信任和固定
 
 运行时需要一个单体内核包：
@@ -122,9 +133,10 @@ RPM 的 release 使用点号 `19.0006`，但包内内核 release 和 `uname -r` 
 稀疏 raw、扩展到 `100 GiB`、修复 GPT 备用表位置并创建第三分区，最后重新压缩为
 qcow2。
 
-第三分区使用全部尾部空间，格式化为 ext4，文件系统和 GPT 标签均为
-`pcdn_index_data`，挂载点为 `/pcdn_data/pcdn_index_data`。扩大实例根盘只会增加
-磁盘尾部未分配空间，不会自动扩大该分区。
+第三分区使用全部尾部空间，格式化为 XFS，GPT 分区标签为 `pcdn_index_data`，
+XFS 文件系统标签为 `pcdn_data`，并通过 `PARTLABEL=pcdn_index_data` 挂载到
+`/pcdn_data/pcdn_index_data`。XFS 文件系统标签最多 12 个字符；扩大实例根盘只会
+增加磁盘尾部未分配空间，不会自动扩大该分区。
 
 ## Incus 兼容性
 

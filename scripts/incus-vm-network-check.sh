@@ -63,6 +63,8 @@ __check_guest_storage() {
       VM_ROOT_IMAGE_BYTES="${VM_ROOT_IMAGE_BYTES}" \
       VM_DISK_TOTAL_BYTES="${VM_DISK_TOTAL_BYTES}" \
       VM_DATA_LABEL="${VM_DATA_LABEL}" \
+      VM_DATA_FS_LABEL="${VM_DATA_FS_LABEL}" \
+      VM_DATA_FSTYPE="${VM_DATA_FSTYPE}" \
       VM_DATA_MOUNT="${VM_DATA_MOUNT}" \
     sh -c '
       set -eux
@@ -70,8 +72,8 @@ __check_guest_storage() {
       _root_source=$(findmnt -n -o SOURCE --target /)
       test -n "${_data_source}"
       test "${_data_source}" != "${_root_source}"
-      test "$(findmnt -n -o FSTYPE --target "${VM_DATA_MOUNT}")" = ext4
-      test "$(blkid -s LABEL -o value "${_data_source}")" = "${VM_DATA_LABEL}"
+      test "$(findmnt -n -o FSTYPE --target "${VM_DATA_MOUNT}")" = "${VM_DATA_FSTYPE}"
+      test "$(blkid -s LABEL -o value "${_data_source}")" = "${VM_DATA_FS_LABEL}"
       test "$(blkid -s PARTLABEL -o value "${_data_source}")" = "${VM_DATA_LABEL}"
       _data_bytes=$(blockdev --getsize64 "${_data_source}")
       _minimum_data_bytes=$((VM_DISK_TOTAL_BYTES - VM_ROOT_IMAGE_BYTES - 2 * 1024 * 1024))
@@ -79,7 +81,7 @@ __check_guest_storage() {
       _parent_name=$(lsblk -n -o PKNAME "${_data_source}" | head -n 1)
       test -n "${_parent_name}"
       test "$(blockdev --getsize64 "/dev/${_parent_name}")" = "${VM_DISK_TOTAL_BYTES}"
-      grep -qF "LABEL=${VM_DATA_LABEL} ${VM_DATA_MOUNT} ext4 defaults 0 2" /etc/fstab
+      grep -qF "PARTLABEL=${VM_DATA_LABEL} ${VM_DATA_MOUNT} ${VM_DATA_FSTYPE} defaults 0 2" /etc/fstab
       _test_file="${VM_DATA_MOUNT}/.incus-network-write-test"
       printf "%s\n" pcdn-data-partition > "${_test_file}"
       grep -qx pcdn-data-partition "${_test_file}"

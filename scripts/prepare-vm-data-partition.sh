@@ -8,6 +8,10 @@ __cleanup() {
   if [ -n "${_new_qcow_path:-}" ]; then
     rm -f -- "${_new_qcow_path}"
   fi
+
+  if [ -n "${_filesystem_image_path:-}" ]; then
+    rm -f -- "${_filesystem_image_path}"
+  fi
 }
 
 __main() {
@@ -17,13 +21,16 @@ __main() {
   _root_image_bytes=${VM_ROOT_IMAGE_BYTES:-42949672960}
   _disk_total_bytes=${VM_DISK_TOTAL_BYTES:-107374182400}
   _data_label=${VM_DATA_LABEL:-pcdn_index_data}
+  _filesystem_label=${VM_DATA_FS_LABEL:-pcdn_data}
   _temporary_dir=${RUNNER_TEMP:-/tmp}
   _raw_path=$(mktemp "${_temporary_dir}/pcdn-vm-disk.XXXXXX")
   _new_qcow_path=$(mktemp "${_temporary_dir}/pcdn-vm-disk.XXXXXX")
+  _filesystem_image_path=$(mktemp "${_temporary_dir}/pcdn-vm-filesystem.XXXXXX")
   trap __cleanup EXIT HUP INT TERM
 
   test -f "${_disk_path}"
   test "${#_data_label}" -le 16
+  test "${#_filesystem_label}" -le 12
   test "${_disk_total_bytes}" -gt "${_root_image_bytes}"
 
   _initial_virtual_size=$(qemu-img info \
@@ -67,20 +74,24 @@ __main() {
   test "${_data_partition_bytes}" -ge "${_minimum_data_bytes}"
   test "${_data_partition_bytes}" -le "${_expected_data_bytes}"
 
-  _filesystem_block_size=4096
-  _filesystem_blocks=$((_data_partition_bytes / _filesystem_block_size))
-  mkfs.ext4 \
-    -F \
-    -b "${_filesystem_block_size}" \
-    -L "${_data_label}" \
-    -m 0 \
-    -E "offset=${_data_offset_bytes}" \
-    "${_raw_path}" \
-    "${_filesystem_blocks}"
+  truncate --size "${_data_partition_bytes}" "${_filesystem_image_path}"
+  mkfs.xfs \
+    -f \
+    -L "${_filesystem_label}" \
+    -d "file=1,name=${_filesystem_image_path},size=${_data_partition_bytes}" \
+    "${_filesystem_image_path}"
+  dd \
+    if="${_filesystem_image_path}" \
+    of="${_raw_path}" \
+    bs=1M \
+    seek="${_data_offset_bytes}" \
+    oflag=seek_bytes \
+    conv=notrunc,sparse \
+    status=none
   test "$(blkid -p -O "${_data_offset_bytes}" -S "${_data_partition_bytes}" \
-    -s TYPE -o value "${_raw_path}")" = ext4
+    -s TYPE -o value "${_raw_path}")" = xfs
   test "$(blkid -p -O "${_data_offset_bytes}" -S "${_data_partition_bytes}" \
-    -s LABEL -o value "${_raw_path}")" = "${_data_label}"
+    -s LABEL -o value "${_raw_path}")" = "${_filesystem_label}"
 
   qemu-img convert \
     -c \

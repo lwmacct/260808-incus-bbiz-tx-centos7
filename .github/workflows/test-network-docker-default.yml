@@ -22,6 +22,8 @@ env:
   VM_ROOT_IMAGE_BYTES: "42949672960"
   VM_DISK_TOTAL_BYTES: "107374182400"
   VM_DATA_LABEL: pcdn_index_data
+  VM_DATA_FS_LABEL: pcdn_data
+  VM_DATA_FSTYPE: xfs
   VM_DATA_MOUNT: /pcdn_data/pcdn_index_data
 
 jobs:
