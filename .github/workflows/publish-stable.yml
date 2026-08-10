@@ -20,6 +20,7 @@ env:
   OCI_REPOSITORY: ghcr.io/${{ github.repository }}
   ORAS_VERSION: 1.3.3
   STABLE_TAG: artifact-standard-stable
+  ROOTFS_STABLE_TAG: artifact-standard-installer-rootfs-stable
 
 jobs:
   publish:
@@ -62,6 +63,16 @@ jobs:
             _stable_descriptor=$(oras manifest fetch --descriptor "${OCI_REPOSITORY}:${_stable_tag}")
             _stable_digest=$(jq -er '.digest' <<< "${_stable_descriptor}")
             test "${_source_digest}" = "${_stable_digest}"
+
+            _source_rootfs_tag="${_source_tag/artifact-standard-sha-/artifact-standard-installer-rootfs-sha-}"
+            _source_rootfs_ref="${OCI_REPOSITORY}:${_source_rootfs_tag}"
+            _source_rootfs_descriptor=$(oras manifest fetch --descriptor "${_source_rootfs_ref}")
+            _source_rootfs_digest=$(jq -er '.digest' <<< "${_source_rootfs_descriptor}")
+            oras tag "${_source_rootfs_ref}" "${ROOTFS_STABLE_TAG}"
+            _stable_rootfs_descriptor=$(oras manifest fetch --descriptor \
+              "${OCI_REPOSITORY}:${ROOTFS_STABLE_TAG}")
+            _stable_rootfs_digest=$(jq -er '.digest' <<< "${_stable_rootfs_descriptor}")
+            test "${_source_rootfs_digest}" = "${_stable_rootfs_digest}"
 
             {
               echo "## Published stable GHCR tag"

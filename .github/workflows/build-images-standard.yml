@@ -7,6 +7,7 @@ on:
     paths:
       - images/standard.yaml
       - scripts/prepare-vm-data-partition.sh
+      - scripts/export-installer-rootfs.sh
       - .github/workflows/build-images-standard.yml
   workflow_dispatch:
 
@@ -34,6 +35,7 @@ env:
   KERNEL_RELEASE: 5.4.119-19-0006
   VM_ROOT_IMAGE_BYTES: "42949672960"
   VM_DISK_TOTAL_BYTES: "107374182400"
+  VM_DATA_PARTITION_BYTES: "64424509440"
   VM_DATA_LABEL: pcdn_index_data
   VM_DATA_FS_LABEL: pcdn_data
   VM_DATA_FSTYPE: xfs
@@ -179,6 +181,7 @@ jobs:
             echo "SERIAL=$(date -u +%Y%m%d_%H%M)" >> "${GITHUB_ENV}"
             echo "OUTPUT_DIR=${RUNNER_TEMP}/incus-image" >> "${GITHUB_ENV}"
             sudo mkdir -p "${RUNNER_TEMP}/incus-image/vm"
+            sudo mkdir -p "${RUNNER_TEMP}/incus-image/installer-rootfs"
             sudo chown -R "$(id -u):$(id -g)" "${RUNNER_TEMP}/incus-image"
           }
 
@@ -200,6 +203,32 @@ jobs:
               -o image.variant="${VARIANT}" \
               -o image.serial="${SERIAL}" \
               -o source.url="https://vault.centos.org/"
+          }
+
+          __main "$@"
+
+      - name: Export installer rootfs from initial VM image
+        shell: bash
+        run: |
+          __main() {
+            set -euo pipefail
+
+            sudo env \
+              RUNNER_TEMP="${RUNNER_TEMP}" \
+              SOURCE_REPOSITORY="https://github.com/${GITHUB_REPOSITORY}" \
+              SOURCE_REVISION="${GITHUB_SHA}" \
+              SOURCE_SERIAL="${SERIAL}" \
+              ARCHITECTURE="${ARCHITECTURE}" \
+              RELEASE="${RELEASE}" \
+              KERNEL_RELEASE="${KERNEL_RELEASE}" \
+              VM_DISK_TOTAL_BYTES="${VM_DISK_TOTAL_BYTES}" \
+              VM_DATA_PARTITION_BYTES="${VM_DATA_PARTITION_BYTES}" \
+              VM_DATA_LABEL="${VM_DATA_LABEL}" \
+              VM_DATA_FS_LABEL="${VM_DATA_FS_LABEL}" \
+              VM_DATA_MOUNT="${VM_DATA_MOUNT}" \
+              bash scripts/export-installer-rootfs.sh \
+                "${OUTPUT_DIR}/vm/disk.qcow2" \
+                "${OUTPUT_DIR}/installer-rootfs"
           }
 
           __main "$@"
@@ -405,6 +434,60 @@ jobs:
               || __fail
 
             sudo incus stop --force "${_test_instance}"
+          }
+
+          __main "$@"
+
+      - name: Publish installer rootfs to GHCR with ORAS
+        shell: bash
+        env:
+          ORAS_ARTIFACT_TYPE_ROOTFS: application/vnd.lwmacct.installer-rootfs.v1
+          ORAS_ROOTFS_TYPE: application/vnd.lwmacct.rootfs.squashfs
+          ORAS_ROOTFS_MANIFEST_TYPE: application/vnd.lwmacct.installer-rootfs.manifest.v1+json
+          ORAS_CHECKSUM_TYPE: text/plain
+        run: |
+          __main() {
+            set -euo pipefail
+
+            _image_file_name="${IMAGE_DEFINITION##*/}"
+            _image_name="${_image_file_name%.yaml}"
+            _full_sha=$(git rev-parse HEAD)
+            _short_sha="${_full_sha:0:12}"
+            _revision_tag="artifact-${_image_name}-installer-rootfs-sha-${_short_sha}"
+            _latest_tag="artifact-${_image_name}-installer-rootfs-latest"
+            (
+              cd "${OUTPUT_DIR}/installer-rootfs"
+              sha256sum --check SHA256SUMS
+              jq -e \
+                --arg _revision "${GITHUB_SHA}" \
+                --arg _kernel_release "${KERNEL_RELEASE}" \
+                '.schema_version == 1
+                  and .source.revision == $_revision
+                  and .image.kernel_release == $_kernel_release
+                  and .payload.includes_efi_tree == true' \
+                rootfs-manifest.json
+              oras push \
+                --artifact-type "${ORAS_ARTIFACT_TYPE_ROOTFS}" \
+                --annotation "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+                --annotation "org.opencontainers.image.revision=${GITHUB_SHA}" \
+                --annotation "org.opencontainers.image.version=${SERIAL}" \
+                --annotation "io.github.lwmacct.kernel.release=${KERNEL_RELEASE}" \
+                "${OCI_REPOSITORY}:${_revision_tag}" \
+                "rootfs.squashfs:${ORAS_ROOTFS_TYPE}" \
+                "rootfs-manifest.json:${ORAS_ROOTFS_MANIFEST_TYPE}" \
+                "SHA256SUMS:${ORAS_CHECKSUM_TYPE}"
+            )
+            oras tag "${OCI_REPOSITORY}:${_revision_tag}" "${_latest_tag}"
+            _descriptor=$(oras manifest fetch --descriptor \
+              "${OCI_REPOSITORY}:${_revision_tag}")
+            _digest=$(jq -er '.digest' <<< "${_descriptor}")
+            {
+              echo "## Published installer rootfs"
+              echo
+              echo "- \`${OCI_REPOSITORY}:${_latest_tag}\`"
+              echo "- \`${OCI_REPOSITORY}:${_revision_tag}\`"
+              echo "- \`${OCI_REPOSITORY}@${_digest}\`"
+            } >> "${GITHUB_STEP_SUMMARY}"
           }
 
           __main "$@"

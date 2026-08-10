@@ -8,8 +8,9 @@
 - 内核 RPM：Tencent Linux `5.4.119-19.0006.tl2`
 - 运行内核：`5.4.119-19-0006`
 - 默认磁盘：`100 GiB`，其中固定 `60 GiB` 独立挂载到 `/pcdn_data/pcdn_index_data`
-- 类型：仅 VM
-- 产物：`incus.tar.xz`、`disk.qcow2`、`SHA256SUMS`
+- 类型：Incus VM，并额外发布供安装 ISO 使用的 rootfs payload
+- VM 产物：`incus.tar.xz`、`disk.qcow2`、`SHA256SUMS`
+- 安装 payload：`rootfs.squashfs`、`rootfs-manifest.json`、`SHA256SUMS`
 
 镜像定义位于 [`images/standard.yaml`](images/standard.yaml)。构建、启动测试和
 GHCR 发布由 [Build Incus VM image](.github/workflows/build-images-standard.yml)
@@ -92,6 +93,9 @@ CentOS 版本和内核版本由仓库配置固定，不再重复编码到 GHCR �
 artifact-standard-latest
 artifact-standard-sha-<git-commit-id-12>
 artifact-standard-stable
+artifact-standard-installer-rootfs-latest
+artifact-standard-installer-rootfs-sha-<git-commit-id-12>
+artifact-standard-installer-rootfs-stable
 ```
 
 `artifact-standard-stable` 不会随每次构建自动移动。通过
@@ -108,6 +112,11 @@ gh workflow run publish-stable.yml --ref main \
 ```text
 ghcr.io/lwmacct/260808-incus-bbiz-tx-centos7
 ```
+
+安装 payload 从磁盘重排前的初始 VM 镜像只读导出。导出时同时挂载根分区和 EFI
+分区，因此 `rootfs.squashfs` 包含 `/boot/efi`。消费方必须使用 OCI digest 或
+`artifact-standard-installer-rootfs-sha-*` 标签固定输入；`latest` 只用于发现新
+版本，不能作为可发布 ISO 的构建输入。
 
 ## 拉取和导入
 
@@ -131,6 +140,18 @@ sudo incus init centos-7-tkernel-vm centos7-tkernel --vm \
 sudo incus config device add centos7-tkernel agent disk source=agent:config
 sudo incus start centos7-tkernel
 sudo incus exec centos7-tkernel -- findmnt /pcdn_data/pcdn_index_data
+```
+
+安装 payload 的拉取方式：
+
+```bash
+mkdir -p out/centos7-tkernel-installer-rootfs
+oras pull \
+  --output out/centos7-tkernel-installer-rootfs \
+  ghcr.io/lwmacct/260808-incus-bbiz-tx-centos7:artifact-standard-installer-rootfs-sha-<git-commit-id-12>
+cd out/centos7-tkernel-installer-rootfs
+sha256sum --check SHA256SUMS
+jq . rootfs-manifest.json
 ```
 
 ## 生命周期和源码

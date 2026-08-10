@@ -35,10 +35,11 @@ CentOS Linux 7.9.2009 / tkernel 5.4.119-19-0006 / amd64 / default / VM
 4. 使用 `distrobuilder build-incus --vm --type=split` 构建初始 `40 GiB` 镜像；构建期间所有 CentOS 包使用官方 Vault，构建动作从腾讯镜像下载固定的单体 `kernel` RPM；最后的 `post-files` 阶段才把成品 yum 切换到中国大陆镜像池。
 5. 校验 RPM 的固定 SHA-256，并使用内嵌 Tlinux 公钥验证 RSA/SHA256 签名。
 6. 安装内核，显式运行 `depmod`、`dracut` 和 grub 配置，并把该版本设为默认内核。
-7. 输出 Incus 元数据和 qcow2 磁盘文件，再把磁盘重排并扩展到 `100 GiB`：第 2 分区为固定 `60 GiB` XFS `pcdn_index_data`，根分区迁移到末尾的第 3 分区。
-8. 对 `disk.qcow2` 执行完整性和虚拟容量检查，将镜像导入 Incus，挂载 agent 配置光盘并关闭 Secure Boot 启动。
-9. 验证系统身份、架构、RPM、`uname -r`、默认 grub 内核、virtio 模块、数据分区、Incus agent 和 IPv4 网络。
-10. 生成 `SHA256SUMS`，通过 ORAS 发布到 GHCR。
+7. 输出 Incus 元数据和初始 `40 GiB` qcow2；只读挂载 EFI 与根分区，导出包含 EFI 树的 `rootfs.squashfs` 安装 payload。
+8. 把磁盘重排并扩展到 `100 GiB`：第 2 分区为固定 `60 GiB` XFS `pcdn_index_data`，根分区迁移到末尾的第 3 分区。
+9. 对 `disk.qcow2` 执行完整性和虚拟容量检查，将镜像导入 Incus，挂载 agent 配置光盘并关闭 Secure Boot 启动。
+10. 验证系统身份、架构、RPM、`uname -r`、默认 grub 内核、virtio 模块、数据分区、Incus agent 和 IPv4 网络。
+11. 分别生成校验和，通过 ORAS 发布 VM artifact 和独立安装 payload artifact。
 
 ## 独立网络实验
 
@@ -88,6 +89,17 @@ disk.qcow2
 SHA256SUMS
 ```
 
+同一次构建还会从磁盘重排前的初始 VM 镜像生成：
+
+```text
+rootfs.squashfs
+rootfs-manifest.json
+SHA256SUMS
+```
+
+安装 payload 只有在 Incus VM 启动测试通过后才会发布。它使用独立 OCI artifact，
+不会增加普通 VM artifact 的拉取体积。ISO 构建必须记录并消费其 OCI digest。
+
 ## Stable 标签发布
 
 [Publish stable GHCR tag](../.github/workflows/publish-stable.yml) 只允许手动触发。
@@ -98,6 +110,11 @@ SHA256SUMS
 gh workflow run publish-stable.yml --ref main \
   -f source_tag=artifact-standard-sha-<git-commit-id-12>
 ```
+
+同一 workflow 会将对应的
+`artifact-standard-installer-rootfs-sha-<git-commit-id-12>` 提升为
+`artifact-standard-installer-rootfs-stable`，并分别校验两个 stable 标签与指定
+的不可变来源指向相同 digest。
 
 ## 内核信任和固定
 
