@@ -343,8 +343,10 @@ actions:
 
     __configure_boot() {
       _kernel_version=5.4.119-19-0006
+      _root_fs_uuid=${DISTROBUILDER_ROOT_UUID#UUID=}
 
       test -f "/boot/vmlinuz-${_kernel_version}"
+      test -n "${_root_fs_uuid}"
       depmod -a "${_kernel_version}"
       dracut --kver "${_kernel_version}" --force
 
@@ -355,6 +357,14 @@ actions:
       _grub_target="$(readlink -f /etc/grub2-efi.cfg)"
       grub2-mkconfig -o "${_grub_target}"
       sed -i "s#root=[^ ]*#root=${DISTROBUILDER_ROOT_UUID}#g" "${_grub_target}"
+      sed -i \
+        "/^[[:space:]]*linuxefi \/boot\/vmlinuz-/i\\
+        insmod ext2\\
+        search --no-floppy --fs-uuid --set=root ${_root_fs_uuid}" \
+        "${_grub_target}"
+      grep -q \
+        "search --no-floppy --fs-uuid --set=root ${_root_fs_uuid}" \
+        "${_grub_target}"
       grubby --set-default "/boot/vmlinuz-${_kernel_version}"
 
       _default_kernel="$(grubby --default-kernel)"
