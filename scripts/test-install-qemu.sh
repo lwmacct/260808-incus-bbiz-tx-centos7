@@ -32,8 +32,8 @@ __run_qemu() {
 
   timeout --foreground "${_timeout_duration}" \
     qemu-system-x86_64 \
-      -machine q35,accel=kvm \
-      -cpu host \
+      -machine "${_qemu_machine}" \
+      -cpu "${_qemu_cpu}" \
       -smp 2 \
       -m 4096 \
       -drive "if=pflash,format=raw,unit=0,readonly=on,file=${_ovmf_code}" \
@@ -103,8 +103,15 @@ __main() {
 
   # shellcheck disable=SC1091
   source "${_repo_root}/config/install.env"
-  test -r /dev/kvm
-  test -w /dev/kvm
+  if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+    _qemu_machine='q35,accel=kvm'
+    _qemu_cpu='host'
+  else
+    # GitHub-hosted runners do not expose KVM; TCG still exercises the full
+    # UEFI, installer, partitioning, and installed-disk boot path.
+    _qemu_machine='q35,accel=tcg,thread=multi'
+    _qemu_cpu='max'
+  fi
   __find_ovmf
   mkdir -p "${_log_dir}"
 
