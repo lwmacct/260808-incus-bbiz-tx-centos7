@@ -118,7 +118,7 @@ __main() {
     "boot/grub/grub.cfg=${_scratch_dir}/grub.cfg"
 
   truncate --size=16M "${_scratch_dir}/efiboot.img"
-  mkfs.vfat -n BBIZ_ISO_EFI "${_scratch_dir}/efiboot.img"
+  mkfs.vfat -n "${EFI_FILESYSTEM_LABEL}" "${_scratch_dir}/efiboot.img"
   mmd -i "${_scratch_dir}/efiboot.img" ::/EFI ::/EFI/BOOT
   mcopy -i "${_scratch_dir}/efiboot.img" \
     "${_scratch_dir}/BOOTX64.EFI" ::/EFI/BOOT/BOOTX64.EFI
