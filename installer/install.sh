@@ -342,9 +342,15 @@ __install_bootloader() {
     --bootloader-id=centos \
     --removable \
     --no-nvram
+
+  _firmware_sysfs_mount="${TARGET_MOUNT}/sys/firmware"
+  mount -t tmpfs tmpfs "${_firmware_sysfs_mount}"
   chroot "${TARGET_MOUNT}" grub2-mkconfig -o /boot/grub2/grub.cfg
+  mkdir -p "${_firmware_sysfs_mount}/efi"
   install -d -m 0755 "${TARGET_MOUNT}/boot/efi/EFI/centos"
   chroot "${TARGET_MOUNT}" grub2-mkconfig -o /boot/efi/EFI/centos/grub.cfg
+  umount "${_firmware_sysfs_mount}"
+
   chroot "${TARGET_MOUNT}" grubby --set-default "/boot/vmlinuz-${KERNEL_RELEASE}"
   test -f "${TARGET_MOUNT}/boot/efi/EFI/BOOT/BOOTX64.EFI"
   test -f "${TARGET_MOUNT}/usr/lib/grub/i386-pc/modinfo.sh"
