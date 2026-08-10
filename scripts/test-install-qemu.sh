@@ -109,7 +109,7 @@ __main() {
   else
     # GitHub-hosted runners do not expose KVM; TCG still exercises the full
     # UEFI, installer, partitioning, and installed-disk boot path.
-    _qemu_machine='q35,accel=tcg,thread=multi'
+    _qemu_machine='q35,accel=tcg'
     _qemu_cpu='max'
   fi
   __find_ovmf
