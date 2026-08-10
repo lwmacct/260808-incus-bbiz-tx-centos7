@@ -138,7 +138,7 @@ __main() {
   test -f "${_root_mount}/boot/vmlinuz-${KERNEL_RELEASE}"
   test -f "${_root_mount}/usr/lib/grub/i386-pc/modinfo.sh"
   test -f "${_root_mount}/usr/lib/grub/x86_64-efi/modinfo.sh"
-  find "${_efi_mount}/EFI" -maxdepth 3 -type f -print -quit | grep -q .
+  find "${_efi_mount}/EFI" -maxdepth 3 -type f -print -quit | grep . >/dev/null
 
   mksquashfs "${_root_mount}" "${_output_dir}/rootfs.squashfs" \
     -comp zstd \
@@ -147,15 +147,15 @@ __main() {
     -no-progress
 
   unsquashfs -cat "${_output_dir}/rootfs.squashfs" etc/os-release \
-    | grep -qx 'VERSION_ID="7"'
+    | grep -x 'VERSION_ID="7"' >/dev/null
   unsquashfs -ll "${_output_dir}/rootfs.squashfs" \
-    | grep -q "/boot/vmlinuz-${KERNEL_RELEASE}$"
+    | grep "/boot/vmlinuz-${KERNEL_RELEASE}$" >/dev/null
   unsquashfs -ll "${_output_dir}/rootfs.squashfs" \
-    | grep -q '/usr/lib/grub/i386-pc/modinfo.sh$'
+    | grep '/usr/lib/grub/i386-pc/modinfo.sh$' >/dev/null
   unsquashfs -ll "${_output_dir}/rootfs.squashfs" \
-    | grep -q '/usr/lib/grub/x86_64-efi/modinfo.sh$'
+    | grep '/usr/lib/grub/x86_64-efi/modinfo.sh$' >/dev/null
   unsquashfs -ll "${_output_dir}/rootfs.squashfs" \
-    | grep -q '/boot/efi/EFI/'
+    | grep '/boot/efi/EFI/' >/dev/null
   __write_manifest
 }
 
