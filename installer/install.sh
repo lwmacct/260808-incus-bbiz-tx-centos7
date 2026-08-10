@@ -362,6 +362,20 @@ __install_bootloader() {
   __log 'verified firmware-specific GRUB kernel commands'
 
   chroot "${TARGET_MOUNT}" grubby --set-default "/boot/vmlinuz-${KERNEL_RELEASE}"
+
+  _bios_grub_config="${TARGET_MOUNT}/boot/grub2/grub.cfg"
+  _dispatch_grub_config=$(mktemp "${_bios_grub_config}.XXXXXX")
+  {
+    printf '%s\n' "if [ \"\${grub_platform}\" = efi ]; then"
+    printf '  search --no-floppy --fs-uuid --set=bbiz_efi %s\n' "${_efi_uuid}"
+    printf '%s\n' \
+      "  configfile (\$bbiz_efi)/EFI/centos/grub.cfg" \
+      'fi'
+    cat "${_bios_grub_config}"
+  } > "${_dispatch_grub_config}"
+  chmod 0644 "${_dispatch_grub_config}"
+  mv "${_dispatch_grub_config}" "${_bios_grub_config}"
+
   test -f "${TARGET_MOUNT}/boot/efi/EFI/BOOT/BOOTX64.EFI"
   test -f "${TARGET_MOUNT}/usr/lib/grub/i386-pc/modinfo.sh"
   test -f "${TARGET_MOUNT}/usr/lib/grub/x86_64-efi/modinfo.sh"
