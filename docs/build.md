@@ -184,6 +184,8 @@ Ubuntu 26.04 的 e2fsprogs 默认会为 ext4 启用 `metadata_csum`、
 找到根分区。构建 workflow 通过
 [`images/mke2fs-centos7.conf`](../images/mke2fs-centos7.conf) 让 distrobuilder
 使用 CentOS 7 时代的 ext4 特性集，并在磁盘重排前再次检查不兼容特性没有出现。
+完整的作用范围、特性基线、替代方案和排障过程见
+[`ext4-centos7-compatibility.md`](ext4-centos7-compatibility.md)。
 
 该内核内置 virtio block、virtio PCI 和 `virtio_scsi`，并将 `virtio_console`、
 `virtio_net`、`virtiofs` 编译为模块。镜像定义通过 dracut 显式加入启动和 agent

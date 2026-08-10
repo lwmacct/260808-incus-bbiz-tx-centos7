@@ -24,7 +24,9 @@ workflow 完成。
 
 网络设计、DHCP 限制和故障排查经验见 [`docs/network.md`](docs/network.md)。中国大陆
 CentOS 7 Vault 镜像的实测结果、取舍和构建限制见
-[`docs/centos7-mirrors-cn.md`](docs/centos7-mirrors-cn.md)。
+[`docs/centos7-mirrors-cn.md`](docs/centos7-mirrors-cn.md)。Ubuntu 26.04 宿主创建
+CentOS 7 根 ext4 时的特性约束和排障方法见
+[`docs/ext4-centos7-compatibility.md`](docs/ext4-centos7-compatibility.md)。
 
 ## 中国大陆 yum 源
 
