@@ -182,8 +182,8 @@ CI 自动安装会锁定 root，且不写入固定凭据。
 
 workflow 会检查 ISO 的 BIOS/UEFI El Torito 启动项，分别启动 SeaBIOS 和 OVMF，
 自动安装到空白 qcow2，然后让同一安装盘分别通过 Legacy BIOS 和 UEFI 启动。pull
-request 只构建和测试；可信 `main` 事件通过全部验证后才会上传 Actions artifact
-并发布到 GHCR：
+request 只构建和测试；可信 `main` 事件通过全部验证后只发布到 GHCR，不创建
+GitHub Actions artifact：
 
 ```text
 artifact-standard-iso-<iso-commit12>-source-<payload-commit12>

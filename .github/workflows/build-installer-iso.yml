@@ -281,23 +281,6 @@ jobs:
 
           __main "$@"
 
-      - name: Upload QEMU diagnostics
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v6.0.0
-        with:
-          name: qemu-serial-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ env.QEMU_LOG_DIR }}
-          if-no-files-found: ignore
-          retention-days: 14
-
-      - name: Upload tested ISO
-        uses: actions/upload-artifact@v6.0.0
-        with:
-          name: centos7-tkernel-installer-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ env.ISO_OUTPUT_DIR }}
-          if-no-files-found: error
-          retention-days: 7
-
       - name: Publish tested ISO to GHCR with ORAS
         if: >-
           (github.event_name == 'push' && github.ref == 'refs/heads/main')
