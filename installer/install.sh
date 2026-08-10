@@ -351,6 +351,16 @@ __install_bootloader() {
   chroot "${TARGET_MOUNT}" grub2-mkconfig -o /boot/efi/EFI/centos/grub.cfg
   umount "${_firmware_sysfs_mount}"
 
+  grep -Eq '^[[:space:]]+linux16[[:space:]]' \
+    "${TARGET_MOUNT}/boot/grub2/grub.cfg"
+  grep -Eq '^[[:space:]]+initrd16[[:space:]]' \
+    "${TARGET_MOUNT}/boot/grub2/grub.cfg"
+  grep -Eq '^[[:space:]]+linuxefi[[:space:]]' \
+    "${TARGET_MOUNT}/boot/efi/EFI/centos/grub.cfg"
+  grep -Eq '^[[:space:]]+initrdefi[[:space:]]' \
+    "${TARGET_MOUNT}/boot/efi/EFI/centos/grub.cfg"
+  __log 'verified firmware-specific GRUB kernel commands'
+
   chroot "${TARGET_MOUNT}" grubby --set-default "/boot/vmlinuz-${KERNEL_RELEASE}"
   test -f "${TARGET_MOUNT}/boot/efi/EFI/BOOT/BOOTX64.EFI"
   test -f "${TARGET_MOUNT}/usr/lib/grub/i386-pc/modinfo.sh"
