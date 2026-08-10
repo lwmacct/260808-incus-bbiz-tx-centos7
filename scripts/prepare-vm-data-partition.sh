@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 
 __cleanup() {
+  if [ -n "${_data_loop_device:-}" ]; then
+    losetup --detach "${_data_loop_device}" 2>/dev/null || true
+  fi
+
   if [ -n "${_raw_path:-}" ]; then
     rm -f -- "${_raw_path}"
   fi
@@ -125,6 +129,12 @@ __main() {
     -m "crc=1,finobt=1,rmapbt=0,reflink=0,inobtcount=0,bigtime=0" \
     -i "sparse=0,nrext64=0" \
     -d "file=1,name=${_filesystem_image_path},size=${_data_partition_bytes}"
+  fallocate \
+    --punch-hole \
+    --keep-size \
+    --offset "${_root_offset_bytes}" \
+    --length "${_data_partition_bytes}" \
+    "${_raw_path}"
   dd \
     if="${_filesystem_image_path}" \
     of="${_raw_path}" \
@@ -133,6 +143,16 @@ __main() {
     oflag=seek_bytes \
     conv=notrunc,sparse \
     status=none
+  _data_loop_device=$(losetup \
+    --find \
+    --show \
+    --read-only \
+    --offset "${_root_offset_bytes}" \
+    --sizelimit "${_data_partition_bytes}" \
+    "${_raw_path}")
+  xfs_repair -n "${_data_loop_device}"
+  losetup --detach "${_data_loop_device}"
+  _data_loop_device=
   test "$(blkid -p -O "${_root_offset_bytes}" -S "${_data_partition_bytes}" \
     -s TYPE -o value "${_raw_path}")" = xfs
   test "$(blkid -p -O "${_root_offset_bytes}" -S "${_data_partition_bytes}" \
