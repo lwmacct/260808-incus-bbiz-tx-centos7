@@ -174,9 +174,10 @@ jobs:
             _resolved_digest=$(jq -er '.digest' <<< "${_descriptor}")
             _expected_digest=${PAYLOAD_OCI_REF##*@}
             test "${_resolved_digest}" = "${_expected_digest}"
+            _manifest=$(oras manifest fetch "${PAYLOAD_OCI_REF}")
             jq -e \
               '.artifactType == "application/vnd.lwmacct.installer-rootfs.v1"' \
-              <<< "${_descriptor}"
+              <<< "${_manifest}"
             oras pull --output "${PAYLOAD_DIR}" "${PAYLOAD_OCI_REF}"
             bash scripts/validate-payload.sh "${PAYLOAD_DIR}" "${PAYLOAD_OCI_REF}"
           }
