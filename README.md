@@ -51,6 +51,11 @@ VM 启动后，workflow 会精确验证 `uname -r` 为
 `5.4.119-19-0006`，并检查 RPM、默认 grub 内核、virtio 模块、Incus agent、
 磁盘布局和网络。
 
+该固定内核支持通用 BPF，但不支持 BPF LSM：包内配置没有 `CONFIG_BPF_LSM`，也
+没有对应的 `security/bpf` 实现。因此不能仅通过 `lsm=bpf` 启动参数开启；需要
+更换带有回移的内核包，或重建内核后再启用 BPF LSM。详细检查结果见
+[`docs/build.md`](docs/build.md#bpf-lsm-支持状态)。
+
 ## 默认磁盘布局
 
 成品 `disk.qcow2` 的虚拟容量固定为 `100 GiB`。第 1 分区为 `100 MiB` EFI，

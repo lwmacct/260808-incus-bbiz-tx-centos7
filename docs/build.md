@@ -125,6 +125,21 @@ D799 A819 89B1 9BC3 210E 2759 F30E D62F 1DAC 41D4
 RPM 的 release 使用点号 `19.0006`，但包内内核 release 和 `uname -r` 使用
 连字符 `5.4.119-19-0006`。
 
+## BPF LSM 支持状态
+
+已对上述精确 RPM（SHA-256 为
+`6b3f5af7d3985d81e8bf07e4240b44f47aa1324f5f5b2517e2908091d91107fb`）检查包内的
+`/boot/config-5.4.119-19-0006`、`System.map` 和模块列表。该内核启用了通用
+BPF（`CONFIG_BPF`、`CONFIG_BPF_SYSCALL`、`CONFIG_BPF_JIT`、`CONFIG_BPF_EVENTS`）
+以及 BTF，但没有 `CONFIG_BPF_LSM`，也没有 `security/bpf/hooks.ko` 或
+`bpf_lsm_*` 符号。它的 `CONFIG_LSM` 列表同样没有 `bpf`。
+
+BPF LSM 的上游实现从 Linux 5.7 才出现；腾讯这颗 5.4.119 内核没有将其回移。
+因此不能通过 grub 的 `lsm=bpf` 参数、`CONFIG_LSM` 字符串或安装用户态工具来
+开启，当前固定 RPM 也没有可加载的 BPF LSM 模块。要使用 BPF LSM，必须改用包含
+该回移的腾讯内核包，或取得源码后重建内核并至少启用 `CONFIG_BPF_LSM=y`，再在
+运行时 LSM 顺序中加入 `bpf`。
+
 ## 默认磁盘布局
 
 `distrobuilder v3.3.1` 只能创建 EFI 和单一根分区，因此镜像定义先生成 `40 GiB`
