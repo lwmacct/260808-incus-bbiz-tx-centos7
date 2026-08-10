@@ -68,9 +68,11 @@ __main() {
   test "$(findmnt -n -o FSTYPE --target /boot/efi)" = vfat || __fail 'EFI is not FAT'
   test -z "$(blkid -s TYPE -o value "${_bios_source}" 2>/dev/null || true)" \
     || __fail 'BIOS boot partition must not have a filesystem'
-  _bios_part_type=$(blkid -s PART_ENTRY_TYPE -o value "${_bios_source}" | tr '[:upper:]' '[:lower:]')
+  _bios_part_type=$(lsblk -dn -o PARTTYPE "${_bios_source}" \
+    | tr -d '[:space:]' \
+    | tr '[:upper:]' '[:lower:]')
   test "${_bios_part_type}" = 21686148-6449-6e6f-744e-656564454649 \
-    || __fail 'BIOS boot partition type mismatch'
+    || __fail "BIOS boot partition type mismatch: ${_bios_part_type:-missing}"
   test "$(blockdev --getsize64 "${_bios_source}")" = "${BIOS_PARTITION_BYTES}" \
     || __fail 'BIOS boot partition size mismatch'
   test "$(blockdev --getsize64 "${_efi_source}")" = "${EFI_PARTITION_BYTES}" \
