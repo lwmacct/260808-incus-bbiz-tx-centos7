@@ -114,7 +114,9 @@ ghcr.io/lwmacct/260808-incus-bbiz-tx-centos7
 ```
 
 安装 payload 从磁盘重排前的初始 VM 镜像只读导出。导出时同时挂载根分区和 EFI
-分区，因此 `rootfs.squashfs` 包含 `/boot/efi`。消费方必须使用 OCI digest 或
+分区，因此 `rootfs.squashfs` 包含 `/boot/efi`。v2 manifest 声明 rootfs 支持
+`i386-pc` 和 `x86_64-efi` 两套 GRUB platform，不包含消费方的目标盘分区策略。
+消费方必须使用 OCI digest 或
 `artifact-standard-installer-rootfs-sha-*` 标签固定输入；`latest` 只用于发现新
 版本，不能作为可发布 ISO 的构建输入。
 

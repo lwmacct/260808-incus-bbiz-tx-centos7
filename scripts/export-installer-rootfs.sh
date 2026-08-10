@@ -55,14 +55,9 @@ __write_manifest() {
     --arg _kernel_release "${KERNEL_RELEASE}" \
     --arg _rootfs_sha256 "${_rootfs_sha256}" \
     --argjson _rootfs_size "${_rootfs_size}" \
-    --argjson _minimum_disk_bytes "${VM_DISK_TOTAL_BYTES}" \
-    --argjson _data_partition_bytes "${VM_DATA_PARTITION_BYTES}" \
-    --arg _data_partition_label "${VM_DATA_LABEL}" \
-    --arg _data_filesystem_label "${VM_DATA_FS_LABEL}" \
-    --arg _data_mount "${VM_DATA_MOUNT}" \
     '{
-      schema_version: 1,
-      artifact_type: "io.github.lwmacct.centos7-tkernel.installer-rootfs.v1",
+      schema_version: 2,
+      artifact_type: "io.github.lwmacct.centos7-tkernel.installer-rootfs.v2",
       source: {
         repository: $_source_repository,
         revision: $_source_revision,
@@ -80,18 +75,11 @@ __write_manifest() {
         sha256: $_rootfs_sha256,
         includes_efi_tree: true
       },
-      install_contract: {
-        firmware: "uefi",
-        secure_boot: false,
-        minimum_disk_bytes: $_minimum_disk_bytes,
-        data_partition_number: 2,
-        data_partition_bytes: $_data_partition_bytes,
-        data_partition_label: $_data_partition_label,
-        data_filesystem: "xfs",
-        data_filesystem_label: $_data_filesystem_label,
-        data_mount: $_data_mount,
-        root_partition_number: 3,
-        root_filesystem: "ext4"
+      boot_capabilities: {
+        firmware_modes: ["bios", "uefi"],
+        grub_platforms: ["i386-pc", "x86_64-efi"],
+        uefi_fallback_loader: true,
+        secure_boot: false
       }
     }' > "${_output_dir}/rootfs-manifest.json"
 
@@ -116,11 +104,6 @@ __main() {
   : "${ARCHITECTURE:?ARCHITECTURE is required}"
   : "${RELEASE:?RELEASE is required}"
   : "${KERNEL_RELEASE:?KERNEL_RELEASE is required}"
-  : "${VM_DISK_TOTAL_BYTES:?VM_DISK_TOTAL_BYTES is required}"
-  : "${VM_DATA_PARTITION_BYTES:?VM_DATA_PARTITION_BYTES is required}"
-  : "${VM_DATA_LABEL:?VM_DATA_LABEL is required}"
-  : "${VM_DATA_FS_LABEL:?VM_DATA_FS_LABEL is required}"
-  : "${VM_DATA_MOUNT:?VM_DATA_MOUNT is required}"
 
   test "$(id -u)" = 0
   test -f "${_disk_path}"
@@ -153,6 +136,7 @@ __main() {
   grep -qx 'ID="centos"' "${_root_mount}/etc/os-release"
   grep -qx 'VERSION_ID="7"' "${_root_mount}/etc/os-release"
   test -f "${_root_mount}/boot/vmlinuz-${KERNEL_RELEASE}"
+  test -f "${_root_mount}/usr/lib/grub/i386-pc/modinfo.sh"
   test -f "${_root_mount}/usr/lib/grub/x86_64-efi/modinfo.sh"
   find "${_efi_mount}/EFI" -maxdepth 3 -type f -print -quit | grep -q .
 
@@ -166,6 +150,8 @@ __main() {
     | grep -qx 'VERSION_ID="7"'
   unsquashfs -ll "${_output_dir}/rootfs.squashfs" \
     | grep -q "/boot/vmlinuz-${KERNEL_RELEASE}$"
+  unsquashfs -ll "${_output_dir}/rootfs.squashfs" \
+    | grep -q '/usr/lib/grub/i386-pc/modinfo.sh$'
   unsquashfs -ll "${_output_dir}/rootfs.squashfs" \
     | grep -q '/usr/lib/grub/x86_64-efi/modinfo.sh$'
   unsquashfs -ll "${_output_dir}/rootfs.squashfs" \

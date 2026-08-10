@@ -221,11 +221,6 @@ jobs:
               ARCHITECTURE="${ARCHITECTURE}" \
               RELEASE="${RELEASE}" \
               KERNEL_RELEASE="${KERNEL_RELEASE}" \
-              VM_DISK_TOTAL_BYTES="${VM_DISK_TOTAL_BYTES}" \
-              VM_DATA_PARTITION_BYTES="${VM_DATA_PARTITION_BYTES}" \
-              VM_DATA_LABEL="${VM_DATA_LABEL}" \
-              VM_DATA_FS_LABEL="${VM_DATA_FS_LABEL}" \
-              VM_DATA_MOUNT="${VM_DATA_MOUNT}" \
               bash scripts/export-installer-rootfs.sh \
                 "${OUTPUT_DIR}/vm/disk.qcow2" \
                 "${OUTPUT_DIR}/installer-rootfs"
@@ -236,9 +231,9 @@ jobs:
       - name: Publish installer rootfs to GHCR with ORAS
         shell: bash
         env:
-          ORAS_ARTIFACT_TYPE_ROOTFS: application/vnd.lwmacct.installer-rootfs.v1
+          ORAS_ARTIFACT_TYPE_ROOTFS: application/vnd.lwmacct.installer-rootfs.v2
           ORAS_ROOTFS_TYPE: application/vnd.lwmacct.rootfs.squashfs
-          ORAS_ROOTFS_MANIFEST_TYPE: application/vnd.lwmacct.installer-rootfs.manifest.v1+json
+          ORAS_ROOTFS_MANIFEST_TYPE: application/vnd.lwmacct.installer-rootfs.manifest.v2+json
           ORAS_CHECKSUM_TYPE: text/plain
         run: |
           __main() {
@@ -256,10 +251,14 @@ jobs:
               jq -e \
                 --arg _revision "${GITHUB_SHA}" \
                 --arg _kernel_release "${KERNEL_RELEASE}" \
-                '.schema_version == 1
+                '.schema_version == 2
                   and .source.revision == $_revision
                   and .image.kernel_release == $_kernel_release
-                  and .payload.includes_efi_tree == true' \
+                  and .payload.includes_efi_tree == true
+                  and .boot_capabilities.firmware_modes == ["bios", "uefi"]
+                  and .boot_capabilities.grub_platforms == ["i386-pc", "x86_64-efi"]
+                  and .boot_capabilities.uefi_fallback_loader == true
+                  and .boot_capabilities.secure_boot == false' \
                 rootfs-manifest.json
               oras push \
                 --artifact-type "${ORAS_ARTIFACT_TYPE_ROOTFS}" \
