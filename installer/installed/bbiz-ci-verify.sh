@@ -14,9 +14,15 @@ __partition_number() {
 __partition_device() {
   _disk_path=$1
   _partition_number=$2
-  lsblk -nrpo NAME,PARTN "${_disk_path}" \
-    | awk -v _partition_number="${_partition_number}" \
-      '$2 == _partition_number {print $1; exit}'
+  while read -r _candidate_path; do
+    [ -n "${_candidate_path}" ] || continue
+    if [ "$(__partition_number "${_candidate_path}")" = "${_partition_number}" ]; then
+      printf '%s\n' "${_candidate_path}"
+      return 0
+    fi
+  done < <(lsblk -nrpo NAME,TYPE "${_disk_path}" | awk '$2 == "part" {print $1}')
+
+  return 1
 }
 
 __wait_for_network() {
