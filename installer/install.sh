@@ -365,6 +365,7 @@ __install_ci_verifier() {
 Description=Verify BBIZ installation in CI
 After=network-online.target
 Wants=network-online.target
+OnFailure=poweroff.target
 
 [Service]
 Type=oneshot

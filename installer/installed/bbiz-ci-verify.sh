@@ -68,8 +68,8 @@ __main() {
   test "$(findmnt -n -o FSTYPE --target /boot/efi)" = vfat || __fail 'EFI is not FAT'
   test -z "$(blkid -s TYPE -o value "${_bios_source}" 2>/dev/null || true)" \
     || __fail 'BIOS boot partition must not have a filesystem'
-  _bios_part_type=$(lsblk -dn -o PARTTYPE "${_bios_source}" \
-    | tr -d '[:space:]' \
+  _bios_part_type=$(udevadm info --query=property --name="${_bios_source}" \
+    | sed -n 's/^ID_PART_ENTRY_TYPE=//p' \
     | tr '[:upper:]' '[:lower:]')
   test "${_bios_part_type}" = 21686148-6449-6e6f-744e-656564454649 \
     || __fail "BIOS boot partition type mismatch: ${_bios_part_type:-missing}"
