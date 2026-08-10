@@ -36,13 +36,8 @@ __main() {
     --arg _rootfs_sha256 "${_rootfs_sha256}" \
     --argjson _rootfs_size "${_rootfs_size}" \
     --arg _kernel_release "${KERNEL_RELEASE}" \
-    --argjson _minimum_disk_bytes "${MINIMUM_DISK_BYTES}" \
-    --argjson _data_partition_bytes "${DATA_PARTITION_BYTES}" \
-    --arg _data_partition_label "${DATA_PARTITION_LABEL}" \
-    --arg _data_filesystem_label "${DATA_FILESYSTEM_LABEL}" \
-    --arg _data_mount "${DATA_MOUNT}" \
-    '.schema_version == 1
-      and .artifact_type == "io.github.lwmacct.centos7-tkernel.installer-rootfs.v1"
+    '.schema_version == 2
+      and .artifact_type == "io.github.lwmacct.centos7-tkernel.installer-rootfs.v2"
       and (.source.revision | test("^[0-9a-f]{40}$"))
       and .image.distribution == "centos"
       and .image.release == "7.9.2009"
@@ -52,22 +47,16 @@ __main() {
       and .payload.sha256 == $_rootfs_sha256
       and .payload.size == $_rootfs_size
       and .payload.includes_efi_tree == true
-      and .install_contract.firmware == "uefi"
-      and .install_contract.secure_boot == false
-      and .install_contract.minimum_disk_bytes == $_minimum_disk_bytes
-      and .install_contract.data_partition_number == 2
-      and .install_contract.data_partition_bytes == $_data_partition_bytes
-      and .install_contract.data_partition_label == $_data_partition_label
-      and .install_contract.data_filesystem == "xfs"
-      and .install_contract.data_filesystem_label == $_data_filesystem_label
-      and .install_contract.data_mount == $_data_mount
-      and .install_contract.root_partition_number == 3
-      and .install_contract.root_filesystem == "ext4"' \
+      and .boot_capabilities.firmware_modes == ["bios", "uefi"]
+      and .boot_capabilities.grub_platforms == ["i386-pc", "x86_64-efi"]
+      and .boot_capabilities.uefi_fallback_loader == true
+      and .boot_capabilities.secure_boot == false' \
     "${_payload_dir}/rootfs-manifest.json"
 
   unsquashfs -stat "${_payload_dir}/rootfs.squashfs" >/dev/null
   unsquashfs -ll "${_payload_dir}/rootfs.squashfs" > "${_listing_path}"
   grep -q "/boot/vmlinuz-${KERNEL_RELEASE}$" "${_listing_path}"
+  grep -q '/usr/lib/grub/i386-pc/modinfo.sh$' "${_listing_path}"
   grep -q '/usr/lib/grub/x86_64-efi/modinfo.sh$' "${_listing_path}"
   grep -q '/boot/efi/EFI/' "${_listing_path}"
   if grep -Eq '/(m-netctl|suprce)(/|$)|/usr/(bin|sbin)/docker$' "${_listing_path}"; then

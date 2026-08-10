@@ -25,10 +25,30 @@ __find_ovmf() {
 }
 
 __run_qemu() {
-  _vars_file=$1
-  _serial_log=$2
-  _timeout_duration=$3
-  shift 3
+  _firmware_mode=$1
+  _vars_file=$2
+  _serial_log=$3
+  _timeout_duration=$4
+  _qemu_disk_path=$5
+  shift 5
+
+  _firmware_args=()
+  case "${_firmware_mode}" in
+    bios)
+      test -z "${_vars_file}"
+      ;;
+    uefi)
+      test -f "${_vars_file}"
+      _firmware_args+=(
+        -drive "if=pflash,format=raw,unit=0,readonly=on,file=${_ovmf_code}"
+        -drive "if=pflash,format=raw,unit=1,file=${_vars_file}"
+      )
+      ;;
+    *)
+      printf 'unsupported firmware mode: %s\n' "${_firmware_mode}" >&2
+      return 1
+      ;;
+  esac
 
   timeout --foreground "${_timeout_duration}" \
     qemu-system-x86_64 \
@@ -36,9 +56,8 @@ __run_qemu() {
       -cpu host \
       -smp 2 \
       -m 4096 \
-      -drive "if=pflash,format=raw,unit=0,readonly=on,file=${_ovmf_code}" \
-      -drive "if=pflash,format=raw,unit=1,file=${_vars_file}" \
-      -drive "if=virtio,format=qcow2,file=${_disk_path}" \
+      "${_firmware_args[@]}" \
+      -drive "if=virtio,format=qcow2,file=${_qemu_disk_path}" \
       -netdev user,id=network0 \
       -device virtio-net-pci,netdev=network0 \
       -display none \
@@ -54,16 +73,22 @@ __print_failure_log() {
   tail -n 240 "${_log_path}" >&2 || true
 }
 
-__test_iso_uefi_boot() {
-  _iso_vars="${_temporary_dir}/iso-vars.fd"
-  _iso_log="${_log_dir}/iso-uefi-serial.log"
-  _iso_pid_file="${_temporary_dir}/iso-qemu.pid"
-  cp "${_ovmf_vars}" "${_iso_vars}"
+__test_iso_boot() {
+  _firmware_mode=$1
+  _vars_file=
+  _iso_log="${_log_dir}/iso-${_firmware_mode}-serial.log"
+  _iso_pid_file="${_temporary_dir}/iso-${_firmware_mode}-qemu.pid"
+  if [ "${_firmware_mode}" = uefi ]; then
+    _vars_file="${_temporary_dir}/iso-uefi-vars.fd"
+    cp "${_ovmf_vars}" "${_vars_file}"
+  fi
 
   __run_qemu \
-    "${_iso_vars}" \
+    "${_firmware_mode}" \
+    "${_vars_file}" \
     "${_iso_log}" \
     5m \
+    "${_disk_path}" \
     -boot order=d \
     -pidfile "${_iso_pid_file}" \
     -cdrom "${_iso_path}" &
@@ -92,6 +117,38 @@ __test_iso_uefi_boot() {
   return 1
 }
 
+__test_installed_boot() {
+  _firmware_mode=$1
+  _vars_file=
+  _boot_log="${_log_dir}/installed-${_firmware_mode}-serial.log"
+  _boot_overlay="${_temporary_dir}/installed-${_firmware_mode}.qcow2"
+  if [ "${_firmware_mode}" = uefi ]; then
+    _vars_file="${_temporary_dir}/installed-uefi-vars.fd"
+    cp "${_ovmf_vars}" "${_vars_file}"
+  fi
+
+  qemu-img create \
+    -f qcow2 \
+    -F qcow2 \
+    -b "${_disk_path}" \
+    "${_boot_overlay}"
+  if ! __run_qemu \
+    "${_firmware_mode}" \
+    "${_vars_file}" \
+    "${_boot_log}" \
+    5m \
+    "${_boot_overlay}" \
+    -boot order=c; then
+    __print_failure_log "${_boot_log}"
+    return 1
+  fi
+  grep -q "BBIZ_BOOT_VERIFY_SUCCESS firmware=${_firmware_mode}" "${_boot_log}" || {
+    __print_failure_log "${_boot_log}"
+    return 1
+  }
+  qemu-img check "${_boot_overlay}"
+}
+
 __main() {
   set -euo pipefail
 
@@ -112,24 +169,23 @@ __main() {
   _kernel_path="${_temporary_dir}/vmlinuz"
   _initrd_path="${_temporary_dir}/initrd"
   _disk_path="${_temporary_dir}/installed.qcow2"
-  _install_vars="${_temporary_dir}/install-vars.fd"
-  _boot_vars="${_temporary_dir}/boot-vars.fd"
-  _install_log="${_log_dir}/install-serial.log"
-  _boot_log="${_log_dir}/installed-boot-serial.log"
+  _install_log="${_log_dir}/install-bios-serial.log"
 
   xorriso -osirrox on -indev "${_iso_path}" \
     -extract /live/vmlinuz "${_kernel_path}" >/dev/null 2>&1
   xorriso -osirrox on -indev "${_iso_path}" \
     -extract /live/initrd "${_initrd_path}" >/dev/null 2>&1
   qemu-img create -f qcow2 "${_disk_path}" "${MINIMUM_DISK_BYTES}"
-  cp "${_ovmf_vars}" "${_install_vars}"
 
-  __test_iso_uefi_boot
+  __test_iso_boot bios
+  __test_iso_boot uefi
 
   if ! __run_qemu \
-    "${_install_vars}" \
+    bios \
+    '' \
     "${_install_log}" \
     12m \
+    "${_disk_path}" \
     -kernel "${_kernel_path}" \
     -initrd "${_initrd_path}" \
     -append "boot=live components live-media-path=/live console=tty0 console=ttyS0,115200n8 installer.auto=1 installer.target=/dev/vda installer.ci=1 installer.shutdown=poweroff" \
@@ -137,21 +193,18 @@ __main() {
     __print_failure_log "${_install_log}"
     return 1
   fi
+  grep -q 'installer firmware mode: Legacy BIOS' "${_install_log}" || {
+    __print_failure_log "${_install_log}"
+    return 1
+  }
   grep -q 'BBIZ_INSTALL_SUCCESS' "${_install_log}" || {
     __print_failure_log "${_install_log}"
     return 1
   }
   qemu-img check "${_disk_path}"
 
-  cp "${_ovmf_vars}" "${_boot_vars}"
-  if ! __run_qemu "${_boot_vars}" "${_boot_log}" 5m; then
-    __print_failure_log "${_boot_log}"
-    return 1
-  fi
-  grep -q 'BBIZ_BOOT_VERIFY_SUCCESS' "${_boot_log}" || {
-    __print_failure_log "${_boot_log}"
-    return 1
-  }
+  __test_installed_boot bios
+  __test_installed_boot uefi
 }
 
 __main "$@"

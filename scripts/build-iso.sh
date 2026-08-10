@@ -20,18 +20,21 @@ __write_iso_manifest() {
     --arg _payload_sha256 "${_payload_sha256}" \
     --arg _kernel_release "${KERNEL_RELEASE}" \
     --argjson _minimum_disk_bytes "${MINIMUM_DISK_BYTES}" \
+    --argjson _bios_partition_bytes "${BIOS_PARTITION_BYTES}" \
+    --arg _bios_partition_label "${BIOS_PARTITION_LABEL}" \
+    --argjson _efi_partition_bytes "${EFI_PARTITION_BYTES}" \
     --argjson _data_partition_bytes "${DATA_PARTITION_BYTES}" \
     --arg _data_partition_label "${DATA_PARTITION_LABEL}" \
     --arg _data_filesystem_label "${DATA_FILESYSTEM_LABEL}" \
     --arg _data_mount "${DATA_MOUNT}" \
     '{
-      schema_version: 1,
-      artifact_type: "io.github.lwmacct.centos7-tkernel.installer-iso.v1",
+      schema_version: 2,
+      artifact_type: "io.github.lwmacct.centos7-tkernel.installer-iso.v2",
       iso: {
         repository: $_iso_repository,
         revision: $_iso_revision,
         version: $_iso_version,
-        firmware: "uefi",
+        firmware_modes: ["bios", "uefi"],
         secure_boot: false
       },
       payload: {
@@ -41,16 +44,22 @@ __write_iso_manifest() {
         kernel_release: $_kernel_release
       },
       install_contract: {
+        partition_table: "gpt",
         minimum_disk_bytes: $_minimum_disk_bytes,
-        efi_partition_number: 1,
-        data_partition_number: 2,
+        bios_boot_partition_number: 1,
+        bios_boot_partition_bytes: $_bios_partition_bytes,
+        bios_boot_partition_label: $_bios_partition_label,
+        efi_partition_number: 2,
+        efi_partition_bytes: $_efi_partition_bytes,
+        data_partition_number: 3,
         data_partition_bytes: $_data_partition_bytes,
         data_partition_label: $_data_partition_label,
         data_filesystem: "xfs",
         data_filesystem_label: $_data_filesystem_label,
         data_mount: $_data_mount,
-        root_partition_number: 3,
-        root_filesystem: "ext4"
+        root_partition_number: 4,
+        root_filesystem: "ext4",
+        grub_platforms: ["i386-pc", "x86_64-efi"]
       }
     }' > "${_image_dir}/iso-manifest.json"
 }
@@ -81,6 +90,7 @@ __main() {
   trap __cleanup EXIT HUP INT TERM
   mkdir -p \
     "${_image_dir}/EFI" \
+    "${_image_dir}/boot/grub" \
     "${_image_dir}/live" \
     "${_image_dir}/payload" \
     "${_scratch_dir}"
@@ -125,6 +135,19 @@ __main() {
   install -m 0644 "${_scratch_dir}/efiboot.img" \
     "${_image_dir}/EFI/efiboot.img"
 
+  grub-mkstandalone \
+    --format=i386-pc \
+    --output="${_scratch_dir}/core.img" \
+    --install-modules='linux normal iso9660 biosdisk memdisk search search_label tar ls all_video gfxterm vbe vga' \
+    --modules='linux normal iso9660 biosdisk memdisk search search_label tar ls all_video gfxterm vbe vga' \
+    --locales='' \
+    --fonts='' \
+    "boot/grub/grub.cfg=${_scratch_dir}/grub.cfg"
+  cat \
+    /usr/lib/grub/i386-pc/cdboot.img \
+    "${_scratch_dir}/core.img" \
+    > "${_image_dir}/boot/grub/bios.img"
+
   __write_iso_manifest
   mkdir -p "${_output_dir}"
   xorriso \
@@ -132,6 +155,14 @@ __main() {
     -iso-level 3 \
     -full-iso9660-filenames \
     -volid "${ISO_VOLUME_ID}" \
+    -eltorito-boot boot/grub/bios.img \
+    -no-emul-boot \
+    -boot-load-size 4 \
+    -boot-info-table \
+    --eltorito-catalog boot/grub/boot.cat \
+    --grub2-boot-info \
+    --grub2-mbr /usr/lib/grub/i386-pc/boot_hybrid.img \
+    -eltorito-alt-boot \
     -e EFI/efiboot.img \
     -no-emul-boot \
     -append_partition 2 0xef "${_scratch_dir}/efiboot.img" \

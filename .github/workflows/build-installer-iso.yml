@@ -137,6 +137,7 @@ jobs:
               e2fsprogs \
               gdisk \
               grub-efi-amd64-bin \
+              grub-pc-bin \
               jq \
               mtools \
               ovmf \
@@ -176,7 +177,7 @@ jobs:
             test "${_resolved_digest}" = "${_expected_digest}"
             _manifest=$(oras manifest fetch "${PAYLOAD_OCI_REF}")
             jq -e \
-              '.artifactType == "application/vnd.lwmacct.installer-rootfs.v1"' \
+              '.artifactType == "application/vnd.lwmacct.installer-rootfs.v2"' \
               <<< "${_manifest}"
             oras pull --output "${PAYLOAD_DIR}" "${PAYLOAD_OCI_REF}"
             bash scripts/validate-payload.sh "${PAYLOAD_DIR}" "${PAYLOAD_OCI_REF}"
@@ -184,7 +185,7 @@ jobs:
 
           __main "$@"
 
-      - name: Build UEFI installer ISO
+      - name: Build hybrid BIOS and UEFI installer ISO
         shell: bash
         run: |
           __main() {
@@ -235,7 +236,7 @@ jobs:
 
           __main "$@"
 
-      - name: Install and boot with QEMU UEFI
+      - name: Install and boot with QEMU BIOS and UEFI
         shell: bash
         run: |
           __main() {
@@ -268,9 +269,9 @@ jobs:
       - name: Publish tested ISO to GHCR with ORAS
         shell: bash
         env:
-          ORAS_ARTIFACT_TYPE_ISO: application/vnd.lwmacct.installer-iso.v1
+          ORAS_ARTIFACT_TYPE_ISO: application/vnd.lwmacct.installer-iso.v2
           ORAS_ISO_TYPE: application/vnd.lwmacct.bootable-iso
-          ORAS_ISO_MANIFEST_TYPE: application/vnd.lwmacct.installer-iso.manifest.v1+json
+          ORAS_ISO_MANIFEST_TYPE: application/vnd.lwmacct.installer-iso.manifest.v2+json
           ORAS_CHECKSUM_TYPE: text/plain
         run: |
           __main() {

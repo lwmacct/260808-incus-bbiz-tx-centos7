@@ -11,6 +11,14 @@ __partition_number() {
   cat "/sys/class/block/${_device_name}/partition"
 }
 
+__partition_device() {
+  _disk_path=$1
+  _partition_number=$2
+  lsblk -nrpo NAME,PARTN "${_disk_path}" \
+    | awk -v _partition_number="${_partition_number}" \
+      '$2 == _partition_number {print $1; exit}'
+}
+
 __wait_for_network() {
   for _attempt in $(seq 1 60); do
     if ip -4 -o address show scope global | grep -q . \
@@ -39,15 +47,28 @@ __main() {
   _efi_source=$(readlink -f "$(findmnt -n -o SOURCE --target /boot/efi)")
   _parent_name=$(lsblk -n -o PKNAME "${_data_source}" | head -n 1)
   test -n "${_parent_name}" || __fail 'data parent disk is missing'
-  test "$(blockdev --getsize64 "/dev/${_parent_name}")" -ge "${MINIMUM_DISK_BYTES}" \
+  _parent_disk="/dev/${_parent_name}"
+  _bios_source=$(__partition_device "${_parent_disk}" 1)
+  test -b "${_bios_source}" || __fail 'BIOS boot partition is missing'
+  test "$(blockdev --getsize64 "${_parent_disk}")" -ge "${MINIMUM_DISK_BYTES}" \
     || __fail 'installed disk is smaller than the install contract'
-  test "$(__partition_number "${_efi_source}")" = 1 || __fail 'EFI is not partition 1'
-  test "$(__partition_number "${_data_source}")" = 2 || __fail 'data is not partition 2'
-  test "$(__partition_number "${_root_source}")" = 3 || __fail 'root is not partition 3'
+  test "$(__partition_number "${_bios_source}")" = 1 || __fail 'BIOS boot is not partition 1'
+  test "$(__partition_number "${_efi_source}")" = 2 || __fail 'EFI is not partition 2'
+  test "$(__partition_number "${_data_source}")" = 3 || __fail 'data is not partition 3'
+  test "$(__partition_number "${_root_source}")" = 4 || __fail 'root is not partition 4'
 
   test "$(findmnt -n -o FSTYPE --target /)" = ext4 || __fail 'root is not ext4'
   test "$(findmnt -n -o FSTYPE --target "${DATA_MOUNT}")" = xfs || __fail 'data is not XFS'
   test "$(findmnt -n -o FSTYPE --target /boot/efi)" = vfat || __fail 'EFI is not FAT'
+  test -z "$(blkid -s TYPE -o value "${_bios_source}" 2>/dev/null || true)" \
+    || __fail 'BIOS boot partition must not have a filesystem'
+  _bios_part_type=$(blkid -s PART_ENTRY_TYPE -o value "${_bios_source}" | tr '[:upper:]' '[:lower:]')
+  test "${_bios_part_type}" = 21686148-6449-6e6f-744e-656564454649 \
+    || __fail 'BIOS boot partition type mismatch'
+  test "$(blockdev --getsize64 "${_bios_source}")" = "${BIOS_PARTITION_BYTES}" \
+    || __fail 'BIOS boot partition size mismatch'
+  test "$(blockdev --getsize64 "${_efi_source}")" = "${EFI_PARTITION_BYTES}" \
+    || __fail 'EFI partition size mismatch'
   test "$(blkid -s PARTLABEL -o value "${_data_source}")" = "${DATA_PARTITION_LABEL}" \
     || __fail 'data PARTLABEL mismatch'
   test "$(blkid -s LABEL -o value "${_data_source}")" = "${DATA_FILESYSTEM_LABEL}" \
@@ -68,6 +89,8 @@ __main() {
   test -s /etc/machine-id || __fail 'machine-id is empty'
   ! grep -qx uninitialized /etc/machine-id || __fail 'machine-id was not initialized'
   test -f /boot/efi/EFI/BOOT/BOOTX64.EFI || __fail 'UEFI fallback loader is missing'
+  test -f /usr/lib/grub/i386-pc/modinfo.sh || __fail 'BIOS GRUB modules are missing'
+  test -f /usr/lib/grub/x86_64-efi/modinfo.sh || __fail 'UEFI GRUB modules are missing'
   test "$(grubby --default-kernel)" = "/boot/vmlinuz-${KERNEL_RELEASE}" \
     || __fail 'default kernel mismatch'
   ! systemctl is-enabled incus-agent.service >/dev/null 2>&1 \
@@ -79,7 +102,12 @@ __main() {
     || __fail 'NetworkManager is not enabled'
   __wait_for_network || __fail 'DHCP network did not become ready'
 
-  printf 'BBIZ_BOOT_VERIFY_SUCCESS\n'
+  if [ -d /sys/firmware/efi ]; then
+    _firmware_mode=uefi
+  else
+    _firmware_mode=bios
+  fi
+  printf 'BBIZ_BOOT_VERIFY_SUCCESS firmware=%s\n' "${_firmware_mode}"
   systemctl disable bbiz-ci-verify.service >/dev/null 2>&1 || true
   systemctl poweroff
 }

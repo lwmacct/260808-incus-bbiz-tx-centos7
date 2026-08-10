@@ -148,10 +148,12 @@ __partition_device() {
 
 __wait_for_partitions() {
   for _attempt in $(seq 1 50); do
-    _efi_partition=$(__partition_device 1)
-    _data_partition=$(__partition_device 2)
-    _root_partition=$(__partition_device 3)
-    if [ -b "${_efi_partition}" ] \
+    _bios_partition=$(__partition_device 1)
+    _efi_partition=$(__partition_device 2)
+    _data_partition=$(__partition_device 3)
+    _root_partition=$(__partition_device 4)
+    if [ -b "${_bios_partition}" ] \
+      && [ -b "${_efi_partition}" ] \
       && [ -b "${_data_partition}" ] \
       && [ -b "${_root_partition}" ]; then
       return 0
@@ -168,13 +170,16 @@ __create_filesystems() {
   sgdisk --zap-all "${_target_disk}"
   parted --script --align optimal "${_target_disk}" \
     mklabel gpt \
+    mkpart BIOS "${BIOS_START_MIB}MiB" "${BIOS_END_MIB}MiB" \
+    set 1 bios_grub on \
+    name 1 "${BIOS_PARTITION_LABEL}" \
     mkpart EFI fat32 "${EFI_START_MIB}MiB" "${EFI_END_MIB}MiB" \
-    set 1 esp on \
-    name 1 EFI_SYSTEM \
+    set 2 esp on \
+    name 2 EFI_SYSTEM \
     mkpart DATA xfs "${EFI_END_MIB}MiB" "${DATA_END_MIB}MiB" \
-    name 2 "${DATA_PARTITION_LABEL}" \
+    name 3 "${DATA_PARTITION_LABEL}" \
     mkpart ROOT ext4 "${DATA_END_MIB}MiB" 100% \
-    name 3 root
+    name 4 root
   partprobe "${_target_disk}"
   udevadm settle
   __wait_for_partitions
@@ -188,7 +193,10 @@ __create_filesystems() {
     "${_data_partition}"
   mkfs.ext4 -F -L "${ROOT_FILESYSTEM_LABEL}" "${_root_partition}"
 
+  test "$(blockdev --getsize64 "${_bios_partition}")" = "${BIOS_PARTITION_BYTES}"
+  test "$(blockdev --getsize64 "${_efi_partition}")" = "${EFI_PARTITION_BYTES}"
   test "$(blockdev --getsize64 "${_data_partition}")" = "${DATA_PARTITION_BYTES}"
+  test "$(blkid -s PARTLABEL -o value "${_bios_partition}")" = "${BIOS_PARTITION_LABEL}"
   test "$(blkid -s PARTLABEL -o value "${_data_partition}")" = "${DATA_PARTITION_LABEL}"
 }
 
@@ -199,12 +207,13 @@ __extract_payload() {
     sha256sum --check SHA256SUMS
     jq -e \
       --arg _kernel_release "${KERNEL_RELEASE}" \
-      --argjson _minimum_disk_bytes "${MINIMUM_DISK_BYTES}" \
-      '.schema_version == 1
+      '.schema_version == 2
+        and .artifact_type == "io.github.lwmacct.centos7-tkernel.installer-rootfs.v2"
         and .image.kernel_release == $_kernel_release
         and .payload.includes_efi_tree == true
-        and .install_contract.firmware == "uefi"
-        and .install_contract.minimum_disk_bytes == $_minimum_disk_bytes' \
+        and .boot_capabilities.firmware_modes == ["bios", "uefi"]
+        and .boot_capabilities.grub_platforms == ["i386-pc", "x86_64-efi"]
+        and .boot_capabilities.secure_boot == false' \
       rootfs-manifest.json
   )
 
@@ -315,13 +324,18 @@ __bind_chroot_filesystems() {
 }
 
 __install_bootloader() {
-  __log 'building initramfs and installing UEFI GRUB'
+  __log 'building initramfs and installing BIOS and UEFI GRUB'
   chroot "${TARGET_MOUNT}" depmod -a "${KERNEL_RELEASE}"
   chroot "${TARGET_MOUNT}" dracut \
     --force \
     --no-hostonly \
     "/boot/initramfs-${KERNEL_RELEASE}.img" \
     "${KERNEL_RELEASE}"
+  chroot "${TARGET_MOUNT}" grub2-install \
+    --target=i386-pc \
+    --boot-directory=/boot \
+    --recheck \
+    "${_target_disk}"
   chroot "${TARGET_MOUNT}" grub2-install \
     --target=x86_64-efi \
     --efi-directory=/boot/efi \
@@ -333,6 +347,8 @@ __install_bootloader() {
   chroot "${TARGET_MOUNT}" grub2-mkconfig -o /boot/efi/EFI/centos/grub.cfg
   chroot "${TARGET_MOUNT}" grubby --set-default "/boot/vmlinuz-${KERNEL_RELEASE}"
   test -f "${TARGET_MOUNT}/boot/efi/EFI/BOOT/BOOTX64.EFI"
+  test -f "${TARGET_MOUNT}/usr/lib/grub/i386-pc/modinfo.sh"
+  test -f "${TARGET_MOUNT}/usr/lib/grub/x86_64-efi/modinfo.sh"
 }
 
 __install_ci_verifier() {
@@ -376,10 +392,11 @@ __main() {
   trap __cleanup EXIT HUP INT TERM
 
   test "$(id -u)" = 0
-  test -d /sys/firmware/efi || {
-    __log 'UEFI firmware is required; Legacy BIOS is not supported'
-    return 1
-  }
+  if [ -d /sys/firmware/efi ]; then
+    __log 'installer firmware mode: UEFI'
+  else
+    __log 'installer firmware mode: Legacy BIOS'
+  fi
   test -f "${PAYLOAD_DIR}/rootfs.squashfs"
   test -f "${PAYLOAD_DIR}/rootfs-manifest.json"
   test -f "${PAYLOAD_DIR}/SHA256SUMS"
