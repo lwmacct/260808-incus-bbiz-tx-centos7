@@ -68,6 +68,7 @@ __main() {
   unsquashfs -stat "${_payload_dir}/rootfs.squashfs" >/dev/null
   unsquashfs -ll "${_payload_dir}/rootfs.squashfs" > "${_listing_path}"
   grep -q "/boot/vmlinuz-${KERNEL_RELEASE}$" "${_listing_path}"
+  grep -q '/usr/lib/grub/x86_64-efi/modinfo.sh$' "${_listing_path}"
   grep -q '/boot/efi/EFI/' "${_listing_path}"
   if grep -Eq '/(m-netctl|suprce)(/|$)|/usr/(bin|sbin)/docker$' "${_listing_path}"; then
     printf 'payload contains excluded external software\n' >&2

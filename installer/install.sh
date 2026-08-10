@@ -44,7 +44,19 @@ __cleanup() {
 __on_error() {
   _exit_status=$?
   _line_number=$1
+  trap - ERR
+  set +e
   __log "installation failed at line ${_line_number} with status ${_exit_status}"
+  __log "BBIZ_INSTALL_FAILURE line=${_line_number} status=${_exit_status}"
+  __cleanup
+  trap - EXIT HUP INT TERM
+
+  _automatic_mode=${_automatic:-$(__kernel_arg installer.auto || true)}
+  if [ "${_automatic_mode}" = 1 ]; then
+    sync
+    systemctl poweroff
+  fi
+
   exit "${_exit_status}"
 }
 

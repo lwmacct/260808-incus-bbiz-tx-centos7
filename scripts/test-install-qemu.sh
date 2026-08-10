@@ -32,8 +32,8 @@ __run_qemu() {
 
   timeout --foreground "${_timeout_duration}" \
     qemu-system-x86_64 \
-      -machine "${_qemu_machine}" \
-      -cpu "${_qemu_cpu}" \
+      -machine q35,accel=kvm \
+      -cpu host \
       -smp 2 \
       -m 4096 \
       -drive "if=pflash,format=raw,unit=0,readonly=on,file=${_ovmf_code}" \
@@ -103,15 +103,9 @@ __main() {
 
   # shellcheck disable=SC1091
   source "${_repo_root}/config/install.env"
-  if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
-    _qemu_machine='q35,accel=kvm'
-    _qemu_cpu='host'
-  else
-    # GitHub-hosted runners do not expose KVM; TCG still exercises the full
-    # UEFI, installer, partitioning, and installed-disk boot path.
-    _qemu_machine='q35,accel=tcg'
-    _qemu_cpu='max'
-  fi
+  test -c /dev/kvm
+  test -r /dev/kvm
+  test -w /dev/kvm
   __find_ovmf
   mkdir -p "${_log_dir}"
 
@@ -135,7 +129,7 @@ __main() {
   if ! __run_qemu \
     "${_install_vars}" \
     "${_install_log}" \
-    35m \
+    12m \
     -kernel "${_kernel_path}" \
     -initrd "${_initrd_path}" \
     -append "boot=live components live-media-path=/live console=tty0 console=ttyS0,115200n8 installer.auto=1 installer.target=/dev/vda installer.ci=1 installer.shutdown=poweroff" \
@@ -150,7 +144,7 @@ __main() {
   qemu-img check "${_disk_path}"
 
   cp "${_ovmf_vars}" "${_boot_vars}"
-  if ! __run_qemu "${_boot_vars}" "${_boot_log}" 15m; then
+  if ! __run_qemu "${_boot_vars}" "${_boot_log}" 5m; then
     __print_failure_log "${_boot_log}"
     return 1
   fi

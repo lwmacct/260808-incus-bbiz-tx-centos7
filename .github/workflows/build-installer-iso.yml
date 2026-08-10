@@ -219,6 +219,22 @@ jobs:
 
           __main "$@"
 
+      - name: Enable KVM for QEMU
+        shell: bash
+        run: |
+          __main() {
+            set -euo pipefail
+
+            test -c /dev/kvm
+            sudo chmod 0666 /dev/kvm
+            test -r /dev/kvm
+            test -w /dev/kvm
+            qemu-system-x86_64 -accel help | grep -qx 'kvm'
+            ls -l /dev/kvm
+          }
+
+          __main "$@"
+
       - name: Install and boot with QEMU UEFI
         shell: bash
         run: |
