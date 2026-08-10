@@ -32,6 +32,14 @@ __fail() {
   exit 1
 }
 
+__boot_failed() {
+  _console_log=$(sudo incus console \
+    "${TEST_INSTANCE}" --show-log 2>/dev/null || true)
+  grep -E \
+    'error: no such device:|error: file .*/boot/vmlinuz-|Failed to boot both default and fallback entries|Entering emergency mode|Kernel panic' \
+    <<< "${_console_log}" >/dev/null
+}
+
 __probe_runner_https() {
   _url=$1
   printf 'origin=runner url=%s\n' "${_url}"
@@ -107,18 +115,21 @@ __main() {
 
   _ready=false
   set +e
-  for _attempt in $(seq 1 120); do
+  for _attempt in $(seq 1 36); do
     sudo incus exec "${TEST_INSTANCE}" -- true >/dev/null 2>&1
     _agent_status=$?
     if [ "${_agent_status}" -eq 0 ]; then
       _ready=true
       break
     fi
+    if [ "$((_attempt % 3))" -eq 0 ] && __boot_failed; then
+      __fail "Guest console reported a fatal boot error"
+    fi
     sleep 5
   done
   set -e
   test "${_ready}" = true || __fail \
-    "Incus agent did not become ready within 10 minutes"
+    "Incus agent did not become ready within 3 minutes"
 
   _guest_kernel=$(sudo incus exec "${TEST_INSTANCE}" -- uname -r) \
     || __fail "Could not read guest kernel"

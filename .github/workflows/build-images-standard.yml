@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - images/standard.yaml
+      - config/mke2fs-centos7.conf
       - scripts/prepare-vm-data-partition.sh
       - scripts/export-installer-rootfs.sh
       - .github/workflows/build-images-standard.yml
@@ -193,7 +194,9 @@ jobs:
           __main() {
             set -euo pipefail
 
-            sudo distrobuilder build-incus "${IMAGE_DEFINITION}" "${OUTPUT_DIR}/vm" \
+            sudo env \
+              MKE2FS_CONFIG="${GITHUB_WORKSPACE}/config/mke2fs-centos7.conf" \
+              distrobuilder build-incus "${IMAGE_DEFINITION}" "${OUTPUT_DIR}/vm" \
               --type=split \
               --compression=xz \
               --vm \
@@ -360,6 +363,14 @@ jobs:
             sudo journalctl --no-pager --unit=incus -n 200 || true
           }
 
+          __boot_failed() {
+            _console_log=$(sudo incus console \
+              "${_test_instance}" --show-log 2>/dev/null || true)
+            grep -E \
+              'error: no such device:|error: file .*/boot/vmlinuz-|Failed to boot both default and fallback entries|Entering emergency mode|Kernel panic' \
+              <<< "${_console_log}" >/dev/null
+          }
+
           __fail() {
             __diagnose
             exit 1
@@ -402,12 +413,15 @@ jobs:
 
             _ready=false
             set +e
-            for _attempt in $(seq 1 120); do
+            for _attempt in $(seq 1 36); do
               sudo incus exec "${_test_instance}" -- sh -c "test -f /etc/os-release" >/dev/null 2>&1
               _agent_status=$?
               if [ "${_agent_status}" -eq 0 ]; then
                 _ready=true
                 break
+              fi
+              if [ "$((_attempt % 3))" -eq 0 ] && __boot_failed; then
+                __fail
               fi
               sleep 5
             done

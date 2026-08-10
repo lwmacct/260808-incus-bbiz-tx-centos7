@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 
 __cleanup() {
+  if [ -n "${_root_loop_device:-}" ]; then
+    losetup --detach "${_root_loop_device}" 2>/dev/null || true
+  fi
+
   if [ -n "${_data_loop_device:-}" ]; then
     losetup --detach "${_data_loop_device}" 2>/dev/null || true
   fi
@@ -16,6 +20,25 @@ __cleanup() {
   if [ -n "${_filesystem_image_path:-}" ]; then
     rm -f -- "${_filesystem_image_path}"
   fi
+}
+
+__validate_root_filesystem() {
+  _filesystem_device=$1
+  _filesystem_type=$(blkid -s TYPE -o value "${_filesystem_device}")
+  test "${_filesystem_type}" = ext4
+
+  _filesystem_features=$(tune2fs -l "${_filesystem_device}" \
+    | sed -n 's/^Filesystem features:[[:space:]]*//p')
+  test -n "${_filesystem_features}"
+
+  for _unsupported_feature in metadata_csum metadata_csum_seed orphan_file; do
+    case " ${_filesystem_features} " in
+      *" ${_unsupported_feature} "*)
+        echo "Unsupported CentOS 7 ext4 feature: ${_unsupported_feature}" >&2
+        return 1
+        ;;
+    esac
+  done
 }
 
 __main() {
@@ -76,6 +99,17 @@ __main() {
   _root_partition_bytes=$((_root_sector_count * _sector_size))
   test "${_root_target_offset_bytes}" -ge \
     "$((_root_offset_bytes + _root_partition_bytes))"
+
+  _root_loop_device=$(losetup \
+    --find \
+    --show \
+    --read-only \
+    --offset "${_root_offset_bytes}" \
+    --sizelimit "${_root_partition_bytes}" \
+    "${_raw_path}")
+  __validate_root_filesystem "${_root_loop_device}"
+  losetup --detach "${_root_loop_device}"
+  _root_loop_device=
 
   truncate --size "${_disk_total_bytes}" "${_raw_path}"
 
