@@ -1,0 +1,296 @@
+name: Build and test installer ISO
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-installer-iso.yml
+      - config/**
+      - installer/**
+      - scripts/**
+      - tests/**
+      - .task/**
+  pull_request:
+    paths:
+      - .github/workflows/build-installer-iso.yml
+      - config/**
+      - installer/**
+      - scripts/**
+      - tests/**
+      - .task/**
+  workflow_dispatch:
+    inputs:
+      payload_ref:
+        description: Immutable installer rootfs OCI reference ending in @sha256:<digest>
+        required: true
+        type: string
+  repository_dispatch:
+    types:
+      - installer-rootfs-published
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: centos7-tkernel-installer-iso-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  OCI_REPOSITORY: ghcr.io/${{ github.repository }}
+  ORAS_VERSION: 1.3.3
+
+jobs:
+  lint:
+    name: Shell, workflow, and layout checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install lint dependencies
+        shell: bash
+        run: |
+          __main() {
+            set -euo pipefail
+
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends shellcheck
+          }
+
+          __main "$@"
+
+      - name: Run local checks
+        shell: bash
+        run: bash scripts/lint.sh
+
+      - name: Validate GitHub Actions workflows
+        shell: bash
+        run: |
+          __main() {
+            set -euo pipefail
+
+            docker run --rm \
+              -v "${GITHUB_WORKSPACE}:/repo" \
+              -w /repo \
+              rhysd/actionlint:1.7.7 \
+              -color
+          }
+
+          __main "$@"
+
+  build:
+    name: Build ISO, install with QEMU, boot, and publish
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.event_name == 'repository_dispatch'
+    needs: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Resolve immutable payload reference
+        shell: bash
+        env:
+          DISPATCH_PAYLOAD_REF: ${{ github.event.client_payload.payload_ref }}
+          MANUAL_PAYLOAD_REF: ${{ inputs.payload_ref }}
+        run: |
+          __main() {
+            set -euo pipefail
+
+            _payload_ref=${MANUAL_PAYLOAD_REF:-${DISPATCH_PAYLOAD_REF:-}}
+            if [[ ! "${_payload_ref}" =~ ^ghcr\.io/lwmacct/260808-incus-bbiz-tx-centos7@sha256:[0-9a-f]{64}$ ]]; then
+              echo 'payload_ref must be the approved upstream repository followed by @sha256:<64 lowercase hex characters>' >&2
+              return 1
+            fi
+            {
+              echo "PAYLOAD_OCI_REF=${_payload_ref}"
+              echo "PAYLOAD_DIR=${RUNNER_TEMP}/installer-rootfs"
+              echo "ISO_OUTPUT_DIR=${RUNNER_TEMP}/installer-iso"
+              echo "QEMU_LOG_DIR=${RUNNER_TEMP}/qemu-logs"
+              echo "ISO_VERSION=$(date -u +%Y%m%d_%H%M)"
+            } >> "${GITHUB_ENV}"
+          }
+
+          __main "$@"
+
+      - name: Install build and test dependencies
+        shell: bash
+        run: |
+          __main() {
+            set -euo pipefail
+
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends \
+              debootstrap \
+              dosfstools \
+              e2fsprogs \
+              gdisk \
+              grub-efi-amd64-bin \
+              jq \
+              mtools \
+              ovmf \
+              parted \
+              qemu-system-x86 \
+              qemu-utils \
+              squashfs-tools \
+              util-linux \
+              xfsprogs \
+              xorriso
+          }
+
+          __main "$@"
+
+      - name: Setup ORAS ${{ env.ORAS_VERSION }}
+        uses: oras-project/setup-oras@v2.0.1
+        with:
+          version: ${{ env.ORAS_VERSION }}
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and verify installer rootfs
+        shell: bash
+        run: |
+          __main() {
+            set -euo pipefail
+
+            mkdir -p "${PAYLOAD_DIR}"
+            _descriptor=$(oras manifest fetch --descriptor "${PAYLOAD_OCI_REF}")
+            _resolved_digest=$(jq -er '.digest' <<< "${_descriptor}")
+            _expected_digest=${PAYLOAD_OCI_REF##*@}
+            test "${_resolved_digest}" = "${_expected_digest}"
+            jq -e \
+              '.artifactType == "application/vnd.lwmacct.installer-rootfs.v1"' \
+              <<< "${_descriptor}"
+            oras pull --output "${PAYLOAD_DIR}" "${PAYLOAD_OCI_REF}"
+            bash scripts/validate-payload.sh "${PAYLOAD_DIR}" "${PAYLOAD_OCI_REF}"
+          }
+
+          __main "$@"
+
+      - name: Build UEFI installer ISO
+        shell: bash
+        run: |
+          __main() {
+            set -euo pipefail
+
+            sudo env \
+              RUNNER_TEMP="${RUNNER_TEMP}" \
+              PAYLOAD_OCI_REF="${PAYLOAD_OCI_REF}" \
+              ISO_SOURCE_REPOSITORY="https://github.com/${GITHUB_REPOSITORY}" \
+              ISO_SOURCE_REVISION="${GITHUB_SHA}" \
+              ISO_VERSION="${ISO_VERSION}" \
+              bash scripts/build-iso.sh "${PAYLOAD_DIR}" "${ISO_OUTPUT_DIR}"
+            sudo chown -R "$(id -u):$(id -g)" "${ISO_OUTPUT_DIR}"
+          }
+
+          __main "$@"
+
+      - name: Inspect ISO structure
+        shell: bash
+        run: |
+          __main() {
+            set -euo pipefail
+
+            (
+              cd "${ISO_OUTPUT_DIR}"
+              sha256sum --check SHA256SUMS
+            )
+            bash scripts/test-iso-structure.sh \
+              "${ISO_OUTPUT_DIR}/installer.iso" \
+              "${ISO_OUTPUT_DIR}/iso-manifest.json"
+          }
+
+          __main "$@"
+
+      - name: Install and boot with QEMU UEFI
+        shell: bash
+        run: |
+          __main() {
+            set -euo pipefail
+
+            bash scripts/test-install-qemu.sh \
+              "${ISO_OUTPUT_DIR}/installer.iso" \
+              "${QEMU_LOG_DIR}"
+          }
+
+          __main "$@"
+
+      - name: Upload QEMU diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: qemu-serial-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.QEMU_LOG_DIR }}
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload tested ISO
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: centos7-tkernel-installer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.ISO_OUTPUT_DIR }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish tested ISO to GHCR with ORAS
+        shell: bash
+        env:
+          ORAS_ARTIFACT_TYPE_ISO: application/vnd.lwmacct.installer-iso.v1
+          ORAS_ISO_TYPE: application/vnd.lwmacct.bootable-iso
+          ORAS_ISO_MANIFEST_TYPE: application/vnd.lwmacct.installer-iso.manifest.v1+json
+          ORAS_CHECKSUM_TYPE: text/plain
+        run: |
+          __main() {
+            set -euo pipefail
+
+            _iso_revision=${GITHUB_SHA:0:12}
+            _payload_revision=$(jq -er '.payload.source_revision' \
+              "${ISO_OUTPUT_DIR}/iso-manifest.json")
+            _payload_short_revision=${_payload_revision:0:12}
+            _revision_tag="artifact-standard-iso-${_iso_revision}-source-${_payload_short_revision}"
+            _latest_tag=artifact-standard-iso-latest
+            (
+              cd "${ISO_OUTPUT_DIR}"
+              sha256sum --check SHA256SUMS
+              oras push \
+                --artifact-type "${ORAS_ARTIFACT_TYPE_ISO}" \
+                --annotation "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+                --annotation "org.opencontainers.image.revision=${GITHUB_SHA}" \
+                --annotation "org.opencontainers.image.version=${ISO_VERSION}" \
+                --annotation "io.github.lwmacct.payload.revision=${_payload_revision}" \
+                "${OCI_REPOSITORY}:${_revision_tag}" \
+                "installer.iso:${ORAS_ISO_TYPE}" \
+                "iso-manifest.json:${ORAS_ISO_MANIFEST_TYPE}" \
+                "SHA256SUMS:${ORAS_CHECKSUM_TYPE}"
+            )
+            oras tag "${OCI_REPOSITORY}:${_revision_tag}" "${_latest_tag}"
+            _descriptor=$(oras manifest fetch --descriptor \
+              "${OCI_REPOSITORY}:${_revision_tag}")
+            _digest=$(jq -er '.digest' <<< "${_descriptor}")
+            {
+              echo '## Published tested installer ISO'
+              echo
+              echo "- \`${OCI_REPOSITORY}:${_revision_tag}\`"
+              echo "- \`${OCI_REPOSITORY}:${_latest_tag}\`"
+              echo "- \`${OCI_REPOSITORY}@${_digest}\`"
+              echo "- Payload: \`${PAYLOAD_OCI_REF}\`"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          }
+
+          __main "$@"

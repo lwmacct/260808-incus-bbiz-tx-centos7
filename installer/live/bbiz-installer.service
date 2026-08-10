@@ -1,0 +1,18 @@
+[Unit]
+Description=BBIZ CentOS 7 installer
+After=systemd-udev-settle.service local-fs.target
+Wants=systemd-udev-settle.service
+Conflicts=getty@tty1.service serial-getty@ttyS0.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/bbiz-installer/install.sh
+StandardInput=tty-force
+StandardOutput=journal+console
+StandardError=journal+console
+TTYPath=/dev/console
+TTYReset=yes
+TTYVHangup=yes
+
+[Install]
+WantedBy=multi-user.target
