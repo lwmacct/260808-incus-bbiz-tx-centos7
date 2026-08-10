@@ -153,6 +153,7 @@ __main() {
   grep -qx 'ID="centos"' "${_root_mount}/etc/os-release"
   grep -qx 'VERSION_ID="7"' "${_root_mount}/etc/os-release"
   test -f "${_root_mount}/boot/vmlinuz-${KERNEL_RELEASE}"
+  test -f "${_root_mount}/usr/lib/grub/x86_64-efi/modinfo.sh"
   find "${_efi_mount}/EFI" -maxdepth 3 -type f -print -quit | grep -q .
 
   mksquashfs "${_root_mount}" "${_output_dir}/rootfs.squashfs" \
@@ -165,6 +166,8 @@ __main() {
     | grep -qx 'VERSION_ID="7"'
   unsquashfs -ll "${_output_dir}/rootfs.squashfs" \
     | grep -q "/boot/vmlinuz-${KERNEL_RELEASE}$"
+  unsquashfs -ll "${_output_dir}/rootfs.squashfs" \
+    | grep -q '/usr/lib/grub/x86_64-efi/modinfo.sh$'
   unsquashfs -ll "${_output_dir}/rootfs.squashfs" \
     | grep -q '/boot/efi/EFI/'
   __write_manifest
