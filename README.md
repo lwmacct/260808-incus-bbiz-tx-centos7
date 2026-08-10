@@ -161,7 +161,7 @@ jq . rootfs-manifest.json
 ## 安装 ISO
 
 ISO 构建器位于 [`isobuild/`](isobuild)，安装合同位于
-[`config/install.env`](config/install.env)。同一 ISO 支持 Legacy BIOS 和 UEFI；
+[`isobuild/config/install.env`](isobuild/config/install.env)。同一 ISO 支持 Legacy BIOS 和 UEFI；
 安装器会写入 `i386-pc` GRUB、`x86_64-efi` GRUB 和 UEFI fallback loader，Secure
 Boot 必须关闭。
 

@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - images/standard.yaml
-      - config/mke2fs-centos7.conf
+      - images/mke2fs-centos7.conf
       - scripts/prepare-vm-data-partition.sh
       - scripts/export-installer-rootfs.sh
       - .github/workflows/build-images-standard.yml
@@ -195,7 +195,7 @@ jobs:
             set -euo pipefail
 
             sudo env \
-              MKE2FS_CONFIG="${GITHUB_WORKSPACE}/config/mke2fs-centos7.conf" \
+              MKE2FS_CONFIG="${GITHUB_WORKSPACE}/images/mke2fs-centos7.conf" \
               distrobuilder build-incus "${IMAGE_DEFINITION}" "${OUTPUT_DIR}/vm" \
               --type=split \
               --compression=xz \

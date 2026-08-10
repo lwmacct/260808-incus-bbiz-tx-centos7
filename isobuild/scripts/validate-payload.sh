@@ -16,7 +16,7 @@ __main() {
   trap __cleanup EXIT HUP INT TERM
 
   # shellcheck disable=SC1091
-  source "${_repo_root}/../config/install.env"
+  source "${_repo_root}/config/install.env"
 
   test -f "${_payload_dir}/rootfs.squashfs"
   test -f "${_payload_dir}/rootfs-manifest.json"

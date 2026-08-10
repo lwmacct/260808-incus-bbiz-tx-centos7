@@ -5,7 +5,7 @@ __main() {
 
   _repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
   # shellcheck disable=SC1091
-  source "${_repo_root}/../config/install.env"
+  source "${_repo_root}/config/install.env"
 
   test "$(((BIOS_END_MIB - BIOS_START_MIB) * 1024 * 1024))" \
     = "${BIOS_PARTITION_BYTES}"

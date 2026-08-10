@@ -159,7 +159,7 @@ __main() {
   trap __cleanup EXIT HUP INT TERM
 
   # shellcheck disable=SC1091
-  source "${_repo_root}/../config/install.env"
+  source "${_repo_root}/config/install.env"
   test -c /dev/kvm
   test -r /dev/kvm
   test -w /dev/kvm

@@ -32,7 +32,11 @@ CentOS Linux 7.9.2009 / tkernel 5.4.119-19-0006 / amd64 / default / VM
 1. 在 GitHub `ubuntu-26.04` AMD64 runner 上配置 Zabbly Incus stable，安装 Incus、QEMU、OVMF 和构建依赖。
 2. 编译并缓存固定版本的 `distrobuilder v3.3.1`。
 3. 验证 `images/standard.yaml`，从官方 CentOS Vault 下载并校验 Minimal ISO。
-4. 使用 `distrobuilder build-incus --vm --type=split` 构建初始 `40 GiB` 镜像；构建期间所有 CentOS 包使用官方 Vault，构建动作从腾讯镜像下载固定的单体 `kernel` RPM；最后的 `post-files` 阶段才把成品 yum 切换到中国大陆镜像池。
+4. 使用 `distrobuilder build-incus --vm --type=split` 构建初始 `40 GiB` 镜像；
+   `images/mke2fs-centos7.conf` 将宿主 `mkfs.ext4` 固定为 CentOS 7 兼容的
+   ext4 特性集，避免 runner 的 e2fsprogs 升级改变磁盘格式。构建期间所有 CentOS
+   包使用官方 Vault，构建动作从腾讯镜像下载固定的单体 `kernel` RPM；最后的
+   `post-files` 阶段才把成品 yum 切换到中国大陆镜像池。
 5. 校验 RPM 的固定 SHA-256，并使用内嵌 Tlinux 公钥验证 RSA/SHA256 签名。
 6. 安装内核，显式运行 `depmod`、`dracut` 和 grub 配置，并把该版本设为默认内核。
 7. 输出 Incus 元数据和初始 `40 GiB` qcow2；只读挂载 EFI 与根分区，导出包含 EFI 树的 `rootfs.squashfs` 安装 payload。
@@ -173,6 +177,13 @@ XFS 文件系统标签为 `pcdn_data`，并通过 `PARTLABEL=pcdn_index_data` �
 文件系统，但镜像不会自动执行扩容。
 
 ## Incus 兼容性
+
+Ubuntu 26.04 的 e2fsprogs 默认会为 ext4 启用 `metadata_csum`、
+`metadata_csum_seed` 和 `orphan_file`。其中新特性超出 CentOS 7 GRUB 与当前固定
+5.4 内核的兼容范围，会导致 GRUB 报 `unknown filesystem` 或无法按文件系统 UUID
+找到根分区。构建 workflow 通过
+[`images/mke2fs-centos7.conf`](../images/mke2fs-centos7.conf) 让 distrobuilder
+使用 CentOS 7 时代的 ext4 特性集，并在磁盘重排前再次检查不兼容特性没有出现。
 
 该内核内置 virtio block、virtio PCI 和 `virtio_scsi`，并将 `virtio_console`、
 `virtio_net`、`virtiofs` 编译为模块。镜像定义通过 dracut 显式加入启动和 agent

@@ -27,7 +27,6 @@ __main() {
 
   _rootfs_dir=${1:?Usage: build-live-rootfs.sh ROOTFS_DIR}
   _repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-  _workspace_root=$(cd "${_repo_root}/.." && pwd)
   _ubuntu_mirror=${UBUNTU_MIRROR:-http://archive.ubuntu.com/ubuntu}
   _ubuntu_security_mirror=${UBUNTU_SECURITY_MIRROR:-http://security.ubuntu.com/ubuntu}
   _chroot_mounts=()
@@ -86,7 +85,7 @@ EOF
     "${_rootfs_dir}/opt/installer/install.sh"
   install -m 0755 "${_repo_root}/installer/installed/installer-ci-verify.sh" \
     "${_rootfs_dir}/opt/installer/installer-ci-verify.sh"
-  install -m 0644 "${_workspace_root}/config/install.env" \
+  install -m 0644 "${_repo_root}/config/install.env" \
     "${_rootfs_dir}/opt/installer/install.env"
   install -m 0644 "${_repo_root}/installer/live/installer.service" \
     "${_rootfs_dir}/etc/systemd/system/installer.service"
