@@ -70,6 +70,7 @@ __main() {
   _payload_dir=${1:?Usage: build-iso.sh PAYLOAD_DIR OUTPUT_DIR}
   _output_dir=${2:?Usage: build-iso.sh PAYLOAD_DIR OUTPUT_DIR}
   _repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+  _workspace_root=$(cd "${_repo_root}/.." && pwd)
   _temporary_dir=${RUNNER_TEMP:-/tmp}
 
   : "${PAYLOAD_OCI_REF:?PAYLOAD_OCI_REF is required}"
@@ -78,12 +79,12 @@ __main() {
   : "${ISO_VERSION:?ISO_VERSION is required}"
 
   # shellcheck disable=SC1091
-  source "${_repo_root}/config/install.env"
+  source "${_workspace_root}/config/install.env"
   test "$(id -u)" = 0
   bash "${_repo_root}/scripts/validate-payload.sh" \
     "${_payload_dir}" "${PAYLOAD_OCI_REF}"
 
-  _build_dir=$(mktemp -d "${_temporary_dir}/bbiz-iso.XXXXXX")
+  _build_dir=$(mktemp -d "${_temporary_dir}/installer-iso.XXXXXX")
   _rootfs_dir="${_build_dir}/rootfs"
   _image_dir="${_build_dir}/image"
   _scratch_dir="${_build_dir}/scratch"

@@ -5,7 +5,7 @@ __main() {
 
   _repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
   # shellcheck disable=SC1091
-  source "${_repo_root}/config/install.env"
+  source "${_repo_root}/../config/install.env"
 
   test "$(((BIOS_END_MIB - BIOS_START_MIB) * 1024 * 1024))" \
     = "${BIOS_PARTITION_BYTES}"
@@ -22,7 +22,9 @@ __main() {
   test "${DATA_END_MIB}" -lt "$((MINIMUM_DISK_BYTES / 1024 / 1024))"
   test "${#BIOS_PARTITION_LABEL}" -le 36
   test "${#DATA_PARTITION_LABEL}" -le 36
+  test "${#EFI_FILESYSTEM_LABEL}" -le 11
   test "${#DATA_FILESYSTEM_LABEL}" -le 12
+  test "${#ROOT_FILESYSTEM_LABEL}" -le 16
   test "${#ISO_VOLUME_ID}" -le 32
   test "${DATA_MOUNT}" = /pcdn_data/pcdn_index_data
   test "${KERNEL_RELEASE}" = 5.4.119-19-0006

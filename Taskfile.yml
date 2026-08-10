@@ -24,3 +24,16 @@ includes:
   ci:
     taskfile: .task/ci.yml
     optional: true
+
+tasks:
+  isobuild:lint:
+    desc: Run ISO builder syntax and logic checks
+    cmds:
+      - bash isobuild/scripts/lint.sh
+
+  isobuild:validate-payload:
+    desc: Validate a downloaded installer rootfs payload
+    requires:
+      vars: [PAYLOAD_DIR, PAYLOAD_OCI_REF]
+    cmds:
+      - bash isobuild/scripts/validate-payload.sh "{{.PAYLOAD_DIR}}" "{{.PAYLOAD_OCI_REF}}"

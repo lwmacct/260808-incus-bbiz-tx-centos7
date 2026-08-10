@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 __log() {
-  printf '[bbiz-installer] %s\n' "$*"
+  printf '[installer] %s\n' "$*"
 }
 
 __kernel_arg() {
@@ -47,7 +47,7 @@ __on_error() {
   trap - ERR
   set +e
   __log "installation failed at line ${_line_number} with status ${_exit_status}"
-  __log "BBIZ_INSTALL_FAILURE line=${_line_number} status=${_exit_status}"
+  __log "INSTALLER_INSTALL_FAILURE line=${_line_number} status=${_exit_status}"
   __cleanup
   trap - EXIT HUP INT TERM
 
@@ -275,7 +275,7 @@ EOF
   install -d -m 0755 "${TARGET_MOUNT}/etc/dracut.conf.d"
   rm -f "${TARGET_MOUNT}/etc/dracut.conf.d/incus.conf"
   printf '%s\n' 'hostonly="no"' \
-    > "${TARGET_MOUNT}/etc/dracut.conf.d/bbiz-installer.conf"
+    > "${TARGET_MOUNT}/etc/dracut.conf.d/installer.conf"
 
   rm -rf \
     "${TARGET_MOUNT}/etc/systemd/system/incus-agent.service" \
@@ -285,9 +285,9 @@ EOF
   find "${TARGET_MOUNT}/etc/systemd/system" -type l -lname '*incus-agent*' -delete
   find "${TARGET_MOUNT}" -xdev -type f -name incus-agent -delete
 
-  install -d -m 0755 "${TARGET_MOUNT}/etc/bbiz-image"
+  install -d -m 0755 "${TARGET_MOUNT}/etc/installer-image"
   install -m 0644 "${PAYLOAD_DIR}/rootfs-manifest.json" \
-    "${TARGET_MOUNT}/etc/bbiz-image/rootfs-manifest.json"
+    "${TARGET_MOUNT}/etc/installer-image/rootfs-manifest.json"
 }
 
 __configure_root_password() {
@@ -367,9 +367,9 @@ __install_bootloader() {
   _dispatch_grub_config=$(mktemp "${_bios_grub_config}.XXXXXX")
   {
     printf '%s\n' "if [ \"\${grub_platform}\" = efi ]; then"
-    printf '  search --no-floppy --fs-uuid --set=bbiz_efi %s\n' "${_efi_uuid}"
+    printf '  search --no-floppy --fs-uuid --set=installer_efi %s\n' "${_efi_uuid}"
     printf '%s\n' \
-      "  configfile (\$bbiz_efi)/EFI/centos/grub.cfg" \
+      "  configfile (\$installer_efi)/EFI/centos/grub.cfg" \
       'fi'
     cat "${_bios_grub_config}"
   } > "${_dispatch_grub_config}"
@@ -385,21 +385,21 @@ __install_ci_verifier() {
   _ci_mode=$(__kernel_arg installer.ci || true)
   [ "${_ci_mode}" = 1 ] || return 0
 
-  install -d -m 0755 "${TARGET_MOUNT}/usr/lib/bbiz-installer"
-  install -m 0644 /opt/bbiz-installer/install.env \
-    "${TARGET_MOUNT}/usr/lib/bbiz-installer/install.env"
-  install -m 0755 /opt/bbiz-installer/bbiz-ci-verify.sh \
-    "${TARGET_MOUNT}/usr/local/sbin/bbiz-ci-verify"
-  cat > "${TARGET_MOUNT}/etc/systemd/system/bbiz-ci-verify.service" <<'EOF'
+  install -d -m 0755 "${TARGET_MOUNT}/usr/lib/installer"
+  install -m 0644 /opt/installer/install.env \
+    "${TARGET_MOUNT}/usr/lib/installer/install.env"
+  install -m 0755 /opt/installer/installer-ci-verify.sh \
+    "${TARGET_MOUNT}/usr/local/sbin/installer-ci-verify"
+  cat > "${TARGET_MOUNT}/etc/systemd/system/installer-ci-verify.service" <<'EOF'
 [Unit]
-Description=Verify BBIZ installation in CI
+Description=Verify installer result in CI
 After=network-online.target
 Wants=network-online.target
 OnFailure=poweroff.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/bbiz-ci-verify
+ExecStart=/usr/local/sbin/installer-ci-verify
 StandardOutput=journal+console
 StandardError=journal+console
 
@@ -407,15 +407,15 @@ StandardError=journal+console
 WantedBy=multi-user.target
 EOF
   install -d -m 0755 "${TARGET_MOUNT}/etc/systemd/system/multi-user.target.wants"
-  ln -s ../bbiz-ci-verify.service \
-    "${TARGET_MOUNT}/etc/systemd/system/multi-user.target.wants/bbiz-ci-verify.service"
+  ln -s ../installer-ci-verify.service \
+    "${TARGET_MOUNT}/etc/systemd/system/multi-user.target.wants/installer-ci-verify.service"
 }
 
 __main() {
   set -Eeuo pipefail
 
   # shellcheck disable=SC1091
-  source /opt/bbiz-installer/install.env
+  source /opt/installer/install.env
   _bind_mounts=()
   _efi_target_mount=
   _data_target_mount=
@@ -443,7 +443,7 @@ __main() {
   __install_ci_verifier
   sync
 
-  __log 'BBIZ_INSTALL_SUCCESS'
+  __log 'INSTALLER_INSTALL_SUCCESS'
   __cleanup
   trap - EXIT HUP INT TERM ERR
 

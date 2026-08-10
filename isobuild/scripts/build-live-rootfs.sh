@@ -27,6 +27,7 @@ __main() {
 
   _rootfs_dir=${1:?Usage: build-live-rootfs.sh ROOTFS_DIR}
   _repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+  _workspace_root=$(cd "${_repo_root}/.." && pwd)
   _ubuntu_mirror=${UBUNTU_MIRROR:-http://archive.ubuntu.com/ubuntu}
   _ubuntu_security_mirror=${UBUNTU_SECURITY_MIRROR:-http://security.ubuntu.com/ubuntu}
   _chroot_mounts=()
@@ -80,20 +81,20 @@ EOF
       util-linux \
       xfsprogs
 
-  install -d -m 0755 "${_rootfs_dir}/opt/bbiz-installer"
+  install -d -m 0755 "${_rootfs_dir}/opt/installer"
   install -m 0755 "${_repo_root}/installer/install.sh" \
-    "${_rootfs_dir}/opt/bbiz-installer/install.sh"
-  install -m 0755 "${_repo_root}/installer/installed/bbiz-ci-verify.sh" \
-    "${_rootfs_dir}/opt/bbiz-installer/bbiz-ci-verify.sh"
-  install -m 0644 "${_repo_root}/config/install.env" \
-    "${_rootfs_dir}/opt/bbiz-installer/install.env"
-  install -m 0644 "${_repo_root}/installer/live/bbiz-installer.service" \
-    "${_rootfs_dir}/etc/systemd/system/bbiz-installer.service"
+    "${_rootfs_dir}/opt/installer/install.sh"
+  install -m 0755 "${_repo_root}/installer/installed/installer-ci-verify.sh" \
+    "${_rootfs_dir}/opt/installer/installer-ci-verify.sh"
+  install -m 0644 "${_workspace_root}/config/install.env" \
+    "${_rootfs_dir}/opt/installer/install.env"
+  install -m 0644 "${_repo_root}/installer/live/installer.service" \
+    "${_rootfs_dir}/etc/systemd/system/installer.service"
   install -d -m 0755 "${_rootfs_dir}/etc/systemd/system/multi-user.target.wants"
-  ln -s ../bbiz-installer.service \
-    "${_rootfs_dir}/etc/systemd/system/multi-user.target.wants/bbiz-installer.service"
+  ln -s ../installer.service \
+    "${_rootfs_dir}/etc/systemd/system/multi-user.target.wants/installer.service"
   ln -sf multi-user.target "${_rootfs_dir}/etc/systemd/system/default.target"
-  printf '%s\n' bbiz-installer > "${_rootfs_dir}/etc/hostname"
+  printf '%s\n' installer > "${_rootfs_dir}/etc/hostname"
   : > "${_rootfs_dir}/etc/machine-id"
 
   chroot "${_rootfs_dir}" update-initramfs -u -k all

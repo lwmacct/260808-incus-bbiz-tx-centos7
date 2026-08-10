@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 __fail() {
-  printf 'BBIZ_BOOT_VERIFY_FAILURE: %s\n' "$*" >&2
+  printf 'INSTALLER_BOOT_VERIFY_FAILURE: %s\n' "$*" >&2
   exit 1
 }
 
@@ -41,7 +41,7 @@ __main() {
   set -euo pipefail
 
   # shellcheck disable=SC1091
-  source /usr/lib/bbiz-installer/install.env
+  source /usr/lib/installer/install.env
 
   test "$(uname -m)" = x86_64 || __fail 'architecture mismatch'
   test "$(uname -r)" = "${KERNEL_RELEASE}" || __fail 'kernel mismatch'
@@ -89,9 +89,9 @@ __main() {
   grep -qF ' / ext4 ' /etc/fstab || __fail 'root fstab entry is missing'
   grep -qF ' /boot/efi vfat ' /etc/fstab || __fail 'EFI fstab entry is missing'
 
-  _test_file="${DATA_MOUNT}/.bbiz-ci-write-test"
-  printf '%s\n' bbiz-ci > "${_test_file}"
-  grep -qx bbiz-ci "${_test_file}" || __fail 'data partition is not writable'
+  _test_file="${DATA_MOUNT}/.installer-ci-write-test"
+  printf '%s\n' installer-ci > "${_test_file}"
+  grep -qx installer-ci "${_test_file}" || __fail 'data partition is not writable'
   rm -f "${_test_file}"
 
   test -s /etc/machine-id || __fail 'machine-id is empty'
@@ -115,8 +115,8 @@ __main() {
   else
     _firmware_mode=bios
   fi
-  printf 'BBIZ_BOOT_VERIFY_SUCCESS firmware=%s\n' "${_firmware_mode}"
-  systemctl disable bbiz-ci-verify.service >/dev/null 2>&1 || true
+  printf 'INSTALLER_BOOT_VERIFY_SUCCESS firmware=%s\n' "${_firmware_mode}"
+  systemctl disable installer-ci-verify.service >/dev/null 2>&1 || true
   systemctl poweroff
 }
 

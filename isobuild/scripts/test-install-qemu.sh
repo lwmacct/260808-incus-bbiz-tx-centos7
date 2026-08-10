@@ -142,7 +142,7 @@ __test_installed_boot() {
     __print_failure_log "${_boot_log}"
     return 1
   fi
-  grep -q "BBIZ_BOOT_VERIFY_SUCCESS firmware=${_firmware_mode}" "${_boot_log}" || {
+  grep -q "INSTALLER_BOOT_VERIFY_SUCCESS firmware=${_firmware_mode}" "${_boot_log}" || {
     __print_failure_log "${_boot_log}"
     return 1
   }
@@ -159,7 +159,7 @@ __main() {
   trap __cleanup EXIT HUP INT TERM
 
   # shellcheck disable=SC1091
-  source "${_repo_root}/config/install.env"
+  source "${_repo_root}/../config/install.env"
   test -c /dev/kvm
   test -r /dev/kvm
   test -w /dev/kvm
@@ -197,7 +197,7 @@ __main() {
     __print_failure_log "${_install_log}"
     return 1
   }
-  grep -q 'BBIZ_INSTALL_SUCCESS' "${_install_log}" || {
+  grep -q 'INSTALLER_INSTALL_SUCCESS' "${_install_log}" || {
     __print_failure_log "${_install_log}"
     return 1
   }

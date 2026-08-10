@@ -1,7 +1,8 @@
 # CentOS 7 + Tencent Linux 内核 Incus VM 镜像
 
-本仓库使用 `distrobuilder` 构建 CentOS 7 Incus VM 镜像，并通过 GitHub Actions
-验证启动、固定内核、独立数据分区和网络连通性。镜像范围如下：
+本仓库使用 `distrobuilder` 构建 CentOS 7 Incus VM 镜像，并将同一系统 rootfs
+封装为支持 Legacy BIOS 和 UEFI 的安装 ISO。构建、安装和启动验证均由 GitHub
+Actions 完成。镜像范围如下：
 
 - 系统：CentOS Linux `7.9.2009`
 - 架构：`amd64`（内核和 distrobuilder 使用 `x86_64`）
@@ -11,6 +12,7 @@
 - 类型：Incus VM，并额外发布供安装 ISO 使用的 rootfs payload
 - VM 产物：`incus.tar.xz`、`disk.qcow2`、`SHA256SUMS`
 - 安装 payload：`rootfs.squashfs`、`rootfs-manifest.json`、`SHA256SUMS`
+- ISO 产物：`installer.iso`、`iso-manifest.json`、`SHA256SUMS`
 
 镜像定义位于 [`images/standard.yaml`](images/standard.yaml)。构建、启动测试和
 GHCR 发布由 [Build Incus VM image](.github/workflows/build-images-standard.yml)
@@ -154,6 +156,56 @@ oras pull \
 cd out/centos7-tkernel-installer-rootfs
 sha256sum --check SHA256SUMS
 jq . rootfs-manifest.json
+```
+
+## 安装 ISO
+
+ISO 构建器位于 [`isobuild/`](isobuild)，安装合同位于
+[`config/install.env`](config/install.env)。同一 ISO 支持 Legacy BIOS 和 UEFI；
+安装器会写入 `i386-pc` GRUB、`x86_64-efi` GRUB 和 UEFI fallback loader，Secure
+Boot 必须关闭。
+
+当前默认合同要求目标盘至少为 `100 GiB`，使用 GPT，包含 BIOS Boot 分区、EFI
+System Partition、固定 `60 GiB` XFS 数据分区和使用剩余空间的 ext4 根分区。数据
+分区继续使用 `PARTLABEL=pcdn_index_data`、文件系统标签 `pcdn_data`，并挂载到
+`/pcdn_data/pcdn_index_data`。交互安装要求二次确认目标盘并现场设置 root 密码；
+CI 自动安装会锁定 root，且不写入固定凭据。
+
+[Build and test installer ISO](.github/workflows/build-installer-iso.yml) 在以下场景执行
+完整构建和 QEMU 测试：
+
+1. ISO 构建器变更的 pull request 和 `main` push 使用已固定 digest 的基线 payload。
+2. [Build Incus VM image](.github/workflows/build-images-standard.yml) 成功后，通过
+   `workflow_run` 将对应 `artifact-standard-installer-rootfs-sha-*` 标签解析成 OCI
+   digest，再构建 ISO。
+3. 手动触发时必须显式传入不可变的 rootfs OCI digest。
+
+workflow 会检查 ISO 的 BIOS/UEFI El Torito 启动项，分别启动 SeaBIOS 和 OVMF，
+自动安装到空白 qcow2，然后让同一安装盘分别通过 Legacy BIOS 和 UEFI 启动。pull
+request 只构建和测试；可信 `main` 事件通过全部验证后才会上传 Actions artifact
+并发布到 GHCR：
+
+```text
+artifact-standard-iso-<iso-commit12>-source-<payload-commit12>
+artifact-standard-iso-latest
+artifact-standard-iso-stable
+```
+
+手动构建和稳定版提升：
+
+```bash
+gh workflow run build-installer-iso.yml --ref main \
+  -f payload_ref=ghcr.io/lwmacct/260808-incus-bbiz-tx-centos7@sha256:<digest>
+gh workflow run publish-installer-iso-stable.yml --ref main \
+  -f source_tag=artifact-standard-iso-<iso-commit12>-source-<payload-commit12>
+```
+
+本地只运行语法和纯逻辑检查，镜像构建及 QEMU 集成测试留在 CI：
+
+```bash
+task isobuild:lint
+# 或
+bash isobuild/scripts/lint.sh
 ```
 
 ## 生命周期和源码
