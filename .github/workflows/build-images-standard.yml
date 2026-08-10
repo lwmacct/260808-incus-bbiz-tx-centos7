@@ -44,7 +44,7 @@ env:
 jobs:
   build:
     name: CentOS 7.9.2009 / TKernel 5.4.119-19.0006 / AMD64 / VM
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 150
 
     steps:

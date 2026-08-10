@@ -35,7 +35,7 @@ jobs:
   network:
     name: Published VM / Incus managed bridge / host reserves 4 GiB
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
 
     steps:

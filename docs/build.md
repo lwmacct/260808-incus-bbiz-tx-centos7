@@ -29,7 +29,7 @@ CentOS Linux 7.9.2009 / tkernel 5.4.119-19-0006 / amd64 / default / VM
 
 ## 构建流程
 
-1. 在 GitHub `ubuntu-24.04` AMD64 runner 上配置 Zabbly Incus stable，安装 Incus、QEMU、OVMF 和构建依赖。
+1. 在 GitHub `ubuntu-26.04` AMD64 runner 上配置 Zabbly Incus stable，安装 Incus、QEMU、OVMF 和构建依赖。
 2. 编译并缓存固定版本的 `distrobuilder v3.3.1`。
 3. 验证 `images/standard.yaml`，从官方 CentOS Vault 下载并校验 Minimal ISO。
 4. 使用 `distrobuilder build-incus --vm --type=split` 构建初始 `40 GiB` 镜像；构建期间所有 CentOS 包使用官方 Vault，构建动作从腾讯镜像下载固定的单体 `kernel` RPM；最后的 `post-files` 阶段才把成品 yum 切换到中国大陆镜像池。
