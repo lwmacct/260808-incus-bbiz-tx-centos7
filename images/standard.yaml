@@ -101,7 +101,8 @@ files:
 - path: /etc/sysconfig/network-scripts/ifcfg-eth0
   generator: template
   content: |-
-    DEVICE=enp5s0
+    DEVICE=eth0
+    NAME=eth0
     BOOTPROTO=dhcp
     ONBOOT=yes
     HOSTNAME={{ container.name }}
@@ -117,7 +118,7 @@ files:
     GRUB_DEFAULT=saved
     GRUB_RECORDFAIL_TIMEOUT=0
     GRUB_TIMEOUT=0
-    GRUB_CMDLINE_LINUX_DEFAULT="${GRUB_CMDLINE_LINUX_DEFAULT} console=tty1 console=ttyS0"
+    GRUB_CMDLINE_LINUX_DEFAULT="${GRUB_CMDLINE_LINUX_DEFAULT} console=tty1 console=ttyS0 net.ifnames=0 biosdevname=0"
     GRUB_TERMINAL=console
     GRUB_DISABLE_OS_PROBER=true
   types:
